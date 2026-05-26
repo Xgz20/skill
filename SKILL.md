@@ -5,7 +5,8 @@ metadata:
   author: pinchbench
   version: "2.0.0-rc1"
   homepage: https://pinchbench.com
-  repository: https://github.com/pinchbench/skill
+  repository: https://github.com/Xgz20/skill.git
+  branch: feature/astronclaw-evaluate
 ---
 
 # PinchBench Benchmark Skill
@@ -23,17 +24,27 @@ PinchBench measures how well LLM models perform as the brain of an OpenClaw agen
 ```bash
 cd <skill_directory>
 
+# 设置裁判模型环境变量
+export ANTHROPIC_API_KEY="<your-judge-api-key>"
+export ANTHROPIC_BASE_URL="<your-judge-base-url>"
+
+# 验证连通性（单任务测试）
+./scripts/run.sh \
+  --model <model_id> \
+  --base-url <model_base_url> \
+  --api-key <model_api_key> \
+  --judge anthropic/claude-sonnet-4-6 \
+  --suite task_sanity \
+  --no-upload --verbose
+
 # Run benchmark with a specific model
-uv run benchmark.py --model anthropic/claude-sonnet-4
+./scripts/run.sh --model <model_id> --base-url <model_base_url> --api-key <model_api_key> --judge anthropic/claude-sonnet-4-6 --no-upload
 
 # Run only automated tasks (faster)
-uv run benchmark.py --model anthropic/claude-sonnet-4 --suite automated-only
+./scripts/run.sh --model <model_id> --base-url <model_base_url> --api-key <model_api_key> --judge anthropic/claude-sonnet-4-6 --suite automated-only --no-upload
 
 # Run specific tasks
-uv run benchmark.py --model anthropic/claude-sonnet-4 --suite task_calendar,task_stock
-
-# Skip uploading results
-uv run benchmark.py --model anthropic/claude-sonnet-4 --no-upload
+./scripts/run.sh --model <model_id> --base-url <model_base_url> --api-key <model_api_key> --judge anthropic/claude-sonnet-4-6 --suite task_calendar,task_stock --no-upload
 ```
 
 ## Available Tasks (23)

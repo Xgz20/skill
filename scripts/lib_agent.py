@@ -1311,7 +1311,10 @@ def _judge_via_anthropic(prompt: str, model: str, timeout_seconds: float) -> Dic
         "Content-Type": "application/json",
         "anthropic-version": "2023-06-01",
     }
+    base_url = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+    endpoint = f"{base_url.rstrip('/')}/v1/messages"
     req = request.Request(
+        endpoint,
         "https://api.anthropic.com/v1/messages",
         data=payload, headers=headers, method="POST",
     )
