@@ -1313,11 +1313,7 @@ def _judge_via_anthropic(prompt: str, model: str, timeout_seconds: float) -> Dic
     }
     base_url = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
     endpoint = f"{base_url.rstrip('/')}/v1/messages"
-    req = request.Request(
-        endpoint,
-        "https://api.anthropic.com/v1/messages",
-        data=payload, headers=headers, method="POST",
-    )
+    req = request.Request(endpoint, data=payload, headers=headers, method="POST")
     try:
         with request.urlopen(req, timeout=timeout_seconds) as resp:
             data = json.loads(resp.read().decode("utf-8"))
