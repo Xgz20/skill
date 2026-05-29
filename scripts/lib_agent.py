@@ -184,17 +184,18 @@ def _get_agent_workspace(agent_id: str) -> Path | None:
         found_agent = False
         for line in lines:
             stripped = line.strip()
-            if stripped.startswith(f"- {agent_id}") or stripped.startswith(f"- {normalized_id}"):
-                found_agent = True
-            elif found_agent and "Workspace:" in line:
-                workspace_str = line.split("Workspace:")[1].strip()
-                # Expand ~ if present
+            if stripped.startswith("- "):
+                # Agent header line: "- agent-name" or "- agent-name (default)"
+                line_agent_name = stripped[2:].split()[0] if stripped[2:].strip() else ""
+                if line_agent_name == agent_id or line_agent_name == normalized_id:
+                    found_agent = True
+                elif found_agent:
+                    break
+            elif found_agent and "Workspace:" in stripped:
+                workspace_str = stripped.split("Workspace:")[1].strip()
                 if workspace_str.startswith("~/"):
                     workspace_str = str(Path.home() / workspace_str[2:])
                 return Path(workspace_str)
-            elif found_agent and line.strip().startswith("-"):
-                # Found next agent, stop looking
-                break
         return None
     except Exception as exc:
         logger.warning("Failed to get agent workspace: %s", exc)
