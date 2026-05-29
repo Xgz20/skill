@@ -1028,6 +1028,7 @@ def main():
                     output_dir=Path(args.output_dir) / f"{run_id}_transcripts",
                     verbose=args.verbose,
                     thinking_level=args.thinking,
+                    use_local=bool(args.base_url),
                 )
             except Exception as exc:
                 execution_error = str(exc)

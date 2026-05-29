@@ -275,6 +275,61 @@ def ensure_agent_exists(
             shell=USE_SHELL,
             )
 
+    # Register custom model in openclaw.json (the authoritative config for this
+    # OpenClaw version) BEFORE creating the agent.
+    openclaw_json = Path.home() / ".openclaw" / "openclaw.json"
+    if base_url:
+        key_ref = api_key if api_key else "${OPENAI_API_KEY}"
+        # Derive a provider name from the base URL (matching OpenClaw's convention)
+        from urllib.parse import urlparse
+        parsed = urlparse(base_url)
+        provider_name = "custom-" + parsed.hostname.replace(".", "-") if parsed.hostname else "custom"
+
+        custom_model_entry = {
+            "id": model_id,
+            "name": f"{model_id} (Custom Provider)",
+            "contextWindow": 200000,
+            "maxTokens": 8192,
+            "input": ["text"],
+            "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+            "reasoning": False,
+        }
+        custom_provider = {
+            "baseUrl": base_url,
+            "api": "openai-completions",
+            "apiKey": key_ref,
+            "models": [custom_model_entry],
+        }
+
+        if openclaw_json.exists():
+            try:
+                oc_data = json.loads(openclaw_json.read_text("utf-8-sig"))
+            except (json.JSONDecodeError, OSError):
+                oc_data = {}
+        else:
+            oc_data = {}
+
+        # Add model provider to openclaw.json → models → providers
+        models_section = oc_data.setdefault("models", {})
+        models_section["mode"] = "merge"
+        providers = models_section.setdefault("providers", {})
+        providers[provider_name] = custom_provider
+
+        # Set agent defaults so the model is used by default
+        agents_section = oc_data.setdefault("agents", {})
+        defaults = agents_section.setdefault("defaults", {})
+        defaults["model"] = {"primary": f"{provider_name}/{model_id}"}
+        defaults["models"] = {f"{provider_name}/{model_id}": {"alias": model_id}}
+
+        # Set gateway mode to local (no separate gateway process needed)
+        gateway_section = oc_data.setdefault("gateway", {})
+        gateway_section["mode"] = "local"
+
+        openclaw_json.write_text(json.dumps(oc_data, indent=2, ensure_ascii=False), "utf-8")
+        logger.info(
+            "Registered custom model %s/%s in openclaw.json", provider_name, model_id
+        )
+
     logger.info("Creating OpenClaw agent %s", agent_id)
     try:
         create_result = subprocess.run(
@@ -303,68 +358,38 @@ def ensure_agent_exists(
             "Agent creation returned %s: %s", create_result.returncode, create_result.stderr
         )
 
-    # Configure models.json for the bench agent
-    bench_agent_dir = _get_agent_store_dir(agent_id) / "agent"
-    bench_agent_dir.mkdir(parents=True, exist_ok=True)
-    bench_models = bench_agent_dir / "models.json"
-    main_models = Path.home() / ".openclaw" / "agents" / "main" / "agent" / "models.json"
-
     if base_url:
-        # Custom OpenAI-compatible endpoint — build a provider entry
-        data: dict[str, Any] = {}
-        if main_models.exists():
-            try:
-                data = json.loads(main_models.read_text("utf-8-sig"))
-            except (json.JSONDecodeError, OSError):
-                data = {}
-
-        key_ref = api_key if api_key else "${OPENAI_API_KEY}"
-        providers = data.setdefault("models", {}).setdefault("providers", {})
-        data["models"]["mode"] = "merge"
-        providers["custom"] = {
-            "baseUrl": base_url,
-            "apiKey": key_ref,
-            "api": "openai-completions",
-            "models": [
-                {
-                    "id": model_id,
-                    "name": model_id,
-                    "reasoning": False,
-                    "input": ["text"],
-                    "contextWindow": 200000,
-                    "maxTokens": 8192,
-                }
-            ],
-        }
-        data["defaultProvider"] = "custom"
-        data["defaultModel"] = model_id
-        bench_models.write_text(json.dumps(data, indent=2, ensure_ascii=False), "utf-8")
         logger.info(
             "Configured custom provider (%s) with model %s for agent %s",
             base_url,
             model_id,
             agent_id,
         )
-    elif main_models.exists():
+    else:
         # Standard OpenRouter flow — copy main's models.json and set defaults
-        import shutil as _shutil
-        _shutil.copy2(main_models, bench_models)
-        if "/" in model_id:
-            provider_name, model_name = model_id.split("/", 1)
-            try:
-                raw = bench_models.read_text("utf-8-sig")
-                data = json.loads(raw)
-                data["defaultProvider"] = provider_name
-                data["defaultModel"] = model_name
-                bench_models.write_text(
-                    json.dumps(data, indent=2, ensure_ascii=False), "utf-8"
-                )
-                logger.info(
-                    "Set bench agent default model to %s / %s", provider_name, model_name
-                )
-            except Exception as exc:
-                logger.warning("Failed to set default model in bench models.json: %s", exc)
-        logger.info("Copied main agent models.json to bench agent %s", agent_id)
+        bench_agent_dir = _get_agent_store_dir(agent_id) / "agent"
+        bench_agent_dir.mkdir(parents=True, exist_ok=True)
+        bench_models = bench_agent_dir / "models.json"
+        main_models = Path.home() / ".openclaw" / "agents" / "main" / "agent" / "models.json"
+        if main_models.exists():
+            import shutil as _shutil
+            _shutil.copy2(main_models, bench_models)
+            if "/" in model_id:
+                provider_name, model_name = model_id.split("/", 1)
+                try:
+                    raw = bench_models.read_text("utf-8-sig")
+                    data = json.loads(raw)
+                    data["defaultProvider"] = provider_name
+                    data["defaultModel"] = model_name
+                    bench_models.write_text(
+                        json.dumps(data, indent=2, ensure_ascii=False), "utf-8"
+                    )
+                    logger.info(
+                        "Set bench agent default model to %s / %s", provider_name, model_name
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to set default model in bench models.json: %s", exc)
+            logger.info("Copied main agent models.json to bench agent %s", agent_id)
 
     # Delete sessions.json so OpenClaw picks up the new defaultProvider/defaultModel
     # instead of reusing a cached session entry that still points to an old model.
@@ -581,7 +606,7 @@ def _find_recent_session_path(agent_dir: Path, started_at: float) -> Path | None
     candidates = [
         p for p in
         list(sessions_dir.rglob("*.jsonl")) + list(sessions_dir.rglob("*.ndjson"))
-        if ".trajectory" not in p.name and ".trajectory-path" not in p.name
+        if ".trajectory-path" not in p.name
     ]
 
     if not candidates:
@@ -776,6 +801,7 @@ def execute_openclaw_task(
     output_dir: Optional[Path] = None,
     verbose: bool = False,
     thinking_level: Optional[str] = None,
+    use_local: bool = False,
 ) -> Dict[str, Any]:
     logger.info("🤖 Agent [%s] starting task: %s", agent_id, task.task_id)
     logger.info("   Task: %s", task.name)
@@ -799,8 +825,9 @@ def execute_openclaw_task(
         else:
             fws_env = start_fws()
 
-    # Use --local for fws tasks so env vars propagate to the agent
-    use_local = fws_env is not None
+    # Use --local for fws tasks so env vars propagate to the agent,
+    # and for custom base_url to bypass gateway model validation.
+    use_local = use_local or fws_env is not None
 
     start_time = time.time()
     workspace = prepare_task_workspace(skill_dir, run_id, task, agent_id)
