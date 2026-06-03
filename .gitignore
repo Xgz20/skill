@@ -67,3 +67,6 @@ results/
 
 # Vultr deployment
 deploy/
+docs/
+output/
+.worktrees/
