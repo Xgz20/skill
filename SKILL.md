@@ -22,7 +22,8 @@ PinchBench measures how well LLM models perform as the brain of an OpenClaw agen
 ## Quick Start
 
 ```bash
-cd <skill_directory>
+# 克隆仓库并切换到目标分支
+git clone https://github.com/Xgz20/skill.git -b feature/astronclaw-evaluate pinchbench-repo
 
 # 设置裁判模型环境变量
 export ANTHROPIC_API_KEY="<your-judge-api-key>"
@@ -37,11 +38,14 @@ export ANTHROPIC_BASE_URL="<your-judge-base-url>"
   --suite task_sanity \
   --no-upload --verbose
 
+# Run only automated tasks (faster，25 条自动化评测任务)
+./scripts/run.sh --model <model_id> --base-url <model_base_url> --api-key <model_api_key> --judge anthropic/claude-sonnet-4-6 --suite automated-only --no-upload
+
+# Run core tasks
+./scripts/run.sh --model <model_id> --base-url <model_base_url> --api-key <model_api_key> --judge anthropic/claude-sonnet-4-6 --core --no-upload
+
 # Run benchmark with a specific model
 ./scripts/run.sh --model <model_id> --base-url <model_base_url> --api-key <model_api_key> --judge anthropic/claude-sonnet-4-6 --no-upload
-
-# Run only automated tasks (faster)
-./scripts/run.sh --model <model_id> --base-url <model_base_url> --api-key <model_api_key> --judge anthropic/claude-sonnet-4-6 --suite automated-only --no-upload
 
 # Run specific tasks
 ./scripts/run.sh --model <model_id> --base-url <model_base_url> --api-key <model_api_key> --judge anthropic/claude-sonnet-4-6 --suite task_calendar,task_stock --no-upload
