@@ -25,6 +25,7 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -799,9 +800,6 @@ def main():
     run_root = Path("/tmp/pinchbench")
     run_id = _next_run_id(run_root)
     skill_dir = skill_root
-    agent_id = f"bench-{model_slug}"
-    # Use a shared workspace for the agent - we'll copy fixtures per task
-    agent_workspace = Path(f"/tmp/pinchbench/{run_id}/agent_workspace")
 
     # Validate model exists before wasting time on tasks
     if args.base_url:
@@ -812,15 +810,6 @@ def main():
         except ModelValidationError as exc:
             logger.error("❌ %s", exc)
             sys.exit(1)
-
-    ensure_agent_exists(
-        agent_id,
-        args.model,
-        agent_workspace,
-        base_url=args.base_url,
-        api_key=args.api_key,
-    )
-    cleanup_agent_sessions(agent_id)
 
     task_ids = _select_task_ids(runner.tasks, args.suite, runner.task_loader.category_map)
     
@@ -1006,6 +995,21 @@ def main():
         heartbeat_thread = threading.Thread(target=_heartbeat, daemon=True)
         heartbeat_thread.start()
 
+        # Create isolated agent for this task to prevent context/state leakage
+        task_uuid = str(uuid.uuid4())[:8]
+        agent_id = f"bench-{model_slug}-{task_uuid}"
+        agent_workspace = Path(f"/tmp/pinchbench/{run_id}/{agent_id}")
+
+        logger.info(f"🔧 Creating isolated agent: {agent_id}")
+        ensure_agent_exists(
+            agent_id,
+            args.model,
+            agent_workspace,
+            base_url=args.base_url,
+            api_key=args.api_key,
+        )
+
+
         for run_index in range(runs_per_task):
             logger.info("\n%s", "=" * 80)
             logger.info(
@@ -1029,6 +1033,7 @@ def main():
                     verbose=args.verbose,
                     thinking_level=args.thinking,
                     use_local=bool(args.base_url),
+                    workspace_dir=agent_workspace,
                 )
             except Exception as exc:
                 execution_error = str(exc)

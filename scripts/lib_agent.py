@@ -430,19 +430,23 @@ def cleanup_agent_sessions(agent_id: str) -> None:
         logger.info("Removed %s old OpenClaw session transcripts for %s", removed, agent_id)
 
 
-def prepare_task_workspace(skill_dir: Path, run_id: str, task: Task, agent_id: str) -> Path:
+def prepare_task_workspace(skill_dir: Path, run_id: str, task: Task, agent_id: str, workspace_override: Path | None = None) -> Path:
     """
     Prepare workspace for a task by copying fixtures.
     Uses the agent's configured workspace to ensure files are in the right place.
+    If workspace_override is provided, use it directly instead of querying OpenClaw.
     """
     import shutil
 
     # Get agent's workspace from agent config
-    workspace = _get_agent_workspace(agent_id)
-    if workspace is None:
-        # Fallback to task-specific workspace if agent workspace not found
-        logger.warning("Could not find agent workspace, using fallback")
-        workspace = Path(f"/tmp/pinchbench/{run_id}/{task.task_id}")
+    if workspace_override is not None:
+        workspace = workspace_override
+    else:
+        workspace = _get_agent_workspace(agent_id)
+        if workspace is None:
+            # Fallback to task-specific workspace if agent workspace not found
+            logger.warning("Could not find agent workspace, using fallback")
+            workspace = Path(f"/tmp/pinchbench/{run_id}/{task.task_id}")
 
     _BOOTSTRAP_FILES = ["SOUL.md", "BOOTSTRAP.md", "USER.md", "IDENTITY.md", "HEARTBEAT.md", "TOOLS.md"]
 
@@ -803,6 +807,7 @@ def execute_openclaw_task(
     verbose: bool = False,
     thinking_level: Optional[str] = None,
     use_local: bool = False,
+    workspace_dir: Optional[Path] = None,
 ) -> Dict[str, Any]:
     logger.info("🤖 Agent [%s] starting task: %s", agent_id, task.task_id)
     logger.info("   Task: %s", task.name)
@@ -831,7 +836,7 @@ def execute_openclaw_task(
     use_local = use_local or fws_env is not None
 
     start_time = time.time()
-    workspace = prepare_task_workspace(skill_dir, run_id, task, agent_id)
+    workspace = prepare_task_workspace(skill_dir, run_id, task, agent_id, workspace_override=workspace_dir)
     session_id = f"{task.task_id}_{int(time.time() * 1000)}"
     timeout_seconds = task.timeout_seconds * timeout_multiplier
     stdout = ""
