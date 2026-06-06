@@ -17,7 +17,7 @@ import yaml
 
 # 组装到 frontmatter 时的字段顺序（id 置顶，对齐官方用例风格）
 _FRONTMATTER_ORDER = [
-    "id", "name", "category", "scene", "sub_scene", "source",
+    "id", "name", "category", "scene", "sub_scene", "source", "difficulty",
     "grading_type", "timeout_seconds", "grading_weights",
     "capabilities", "workspace_files",
 ]
@@ -194,6 +194,7 @@ def render_report(workflow_result: Dict[str, Any], case_id: str) -> str:
         "",
         f"- **用例名称**: {fm.get('name', '')}",
         f"- **场景**: {fm.get('scene', '')} / {fm.get('sub_scene', '')}",
+        f"- **难度等级**: {fm.get('difficulty', 'N/A')}",
         f"- **评分类型**: {fm.get('grading_type', '')}",
     ]
     if fm.get("grading_weights"):

@@ -44,6 +44,13 @@ Query: ${args.query}
    - hybrid: 结合两者（推荐）
 5. 提取capabilities（核心能力点，3-5个，用英文snake_case）
 6. 建议timeout_seconds（考虑任务复杂度，默认180）
+7. 评估任务复杂度并识别难度等级 difficulty（L1-L4）：
+   - L1: 单步执行，单工具调用（1-3步，1个工具，如文件读取、简单查询）
+   - L2: 多步推理，工具组合（4-10步，2-3个工具，如数据分析、日志提取）
+   - L3: 复杂规划，跨领域（10-30步，多工具链，如代码重构、深度研究）
+   - L4: 长程任务，跨系统/多Agent（30+步，跨会话，如端到端项目、多Agent协作）
+   同时给出 estimated_steps（预估执行步数）和 estimated_tools（预估涉及工具数），
+   作为难度判断依据（步数和工具数取较高者对应的等级，避免低估）。
 
 输出语言必须与Query语言一致（${args.language === 'zh' ? '中文' : '英文'}）。`,
   {
@@ -60,15 +67,19 @@ Query: ${args.query}
           items: { type: 'string', pattern: '^[a-z_]+$' },
           minItems: 3, maxItems: 5
         },
-        suggested_timeout: { type: 'number', minimum: 60, maximum: 600 }
+        suggested_timeout: { type: 'number', minimum: 60, maximum: 600 },
+        difficulty: { type: 'string', enum: ['L1', 'L2', 'L3', 'L4'] },
+        estimated_steps: { type: 'number', minimum: 1 },
+        estimated_tools: { type: 'number', minimum: 1 }
       },
-      required: ['scene', 'sub_scene', 'category', 'grading_type', 'capabilities', 'suggested_timeout']
+      required: ['scene', 'sub_scene', 'category', 'grading_type', 'capabilities', 'suggested_timeout', 'difficulty', 'estimated_steps', 'estimated_tools']
     }
   }
 )
 
 log(`场景识别: ${analysis.scene} / ${analysis.sub_scene}`)
 log(`技术分类: ${analysis.category}, 评分类型: ${analysis.grading_type}`)
+log(`难度评估: LLM判定=${analysis.difficulty} (预估${analysis.estimated_steps}步/${analysis.estimated_tools}工具)`)
 
 // ============ 阶段 2: 多方案生成 ============
 phase('多方案生成')
@@ -316,6 +327,30 @@ if (analysis.grading_type === 'hybrid') {
   log(`grading_weights: automated=${gradingWeights.automated}, llm_judge=${gradingWeights.llm_judge}`)
 }
 
+// 难度等级：LLM 判定 + 规则推算双重校验，不一致时以规则为准（避免 LLM 高估/低估）
+// 规则依据 3.5 难度分级：步数和工具数取较高者对应的等级
+function calcDifficulty(steps, tools) {
+  if (steps >= 30) return 'L4'
+  if (steps >= 10 || tools >= 4) return 'L3'
+  if (steps >= 4 || tools >= 2) return 'L2'
+  return 'L1'
+}
+const ruleLevel = calcDifficulty(analysis.estimated_steps, analysis.estimated_tools)
+let difficulty = ruleLevel
+if (analysis.difficulty !== ruleLevel) {
+  log(`难度分歧: LLM判定=${analysis.difficulty}, 规则推算=${ruleLevel}（预估${analysis.estimated_steps}步/${analysis.estimated_tools}工具），以规则为准`)
+}
+log(`最终难度: ${difficulty}`)
+
+// timeout 一致性校验：difficulty 与 timeout_seconds 是否落在合理区间，越界 log 提示人工复核
+const TIMEOUT_RANGES = {
+  L1: [60, 180], L2: [120, 300], L3: [180, 600], L4: [300, 600]
+}
+const [tMin, tMax] = TIMEOUT_RANGES[difficulty]
+if (analysis.suggested_timeout < tMin || analysis.suggested_timeout > tMax) {
+  log(`⚠️ timeout 校验: ${difficulty} 建议区间 ${tMin}-${tMax}s，当前 ${analysis.suggested_timeout}s，建议人工复核`)
+}
+
 return {
   frontmatter: {
     name: bestDraft.name,
@@ -323,6 +358,7 @@ return {
     scene: analysis.scene,
     sub_scene: analysis.sub_scene,
     source: 'astronclaw',
+    difficulty: difficulty,
     grading_type: analysis.grading_type,
     timeout_seconds: analysis.suggested_timeout,
     ...(gradingWeights ? { grading_weights: gradingWeights } : {}),
