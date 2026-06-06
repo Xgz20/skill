@@ -201,7 +201,23 @@ const gradingLogic = await pipeline(
   ),
   (result, task) => {
     if (task.type === 'automated') {
-      return agent(`检查此Python代码语法是否正确：\n\`\`\`python\n${result.code}\n\`\`\`\n如果有错返回修复后的代码`, {
+      // 通过确定性脚本验证 Python 语法（临时文件在系统/tmp，用完自动清理，不污染项目根）
+      return agent(`验证此Python代码语法是否正确。
+
+【重要】：不要自己创建任何文件！调用验证脚本完成检查：
+
+\`\`\`bash
+cat <<'EOCODE' | python lib/validate_python.py
+${result.code}
+EOCODE
+\`\`\`
+
+脚本会输出 JSON：{"valid": true/false, "error": "..."}
+
+- 若 valid=true：代码无语法错误，返回 has_issues=false
+- 若 valid=false：有语法错误，error 字段含详情，你需要分析错误并生成修复后的代码
+
+不要在项目根或工作空间创建任何临时文件（脚本内部已处理临时文件并自动清理）。`, {
         label: '验证:Python', phase: '评分逻辑生成',
         schema: { type: 'object', properties: { has_issues: {type: 'boolean'}, fixed_code: {type: 'string'} }, required: ['has_issues'] }
       }).then(check => check.has_issues ? { code: check.fixed_code } : result)
@@ -226,7 +242,22 @@ phase('对抗式质检')
 
 const critics = [
   { key: 'prompt_ambiguity', prompt: `对此Prompt进行对抗式检查："${bestDraft.prompt}" 是否有歧义或缺失信息？默认假设有问题。` },
-  { key: 'python_executable', prompt: automatedChecks ? `检查此Python代码：\`\`\`python\n${automatedChecks.code}\n\`\`\`\n是否有语法错误、库依赖问题？` : null },
+  { key: 'python_executable', prompt: automatedChecks ? `检查此Python代码是否有语法错误或库依赖问题。
+
+【重要】：不要创建任何文件！调用验证脚本：
+
+\`\`\`bash
+cat <<'EOCODE' | python lib/validate_python.py
+${automatedChecks.code}
+EOCODE
+\`\`\`
+
+脚本返回 JSON：{"valid": true/false, "error": "..."}
+
+- valid=true 且代码仅用标准库 → hasIssues=false, severity='minor'
+- valid=false 或发现非标准库依赖 → hasIssues=true, severity='critical'/'moderate'
+
+不要在工作空间创建临时文件（脚本已处理临时文件并自动清理）。` : null },
   { key: 'criteria_coverage', prompt: `核心能力: ${analysis.capabilities.join(', ')}, 评分维度: ${bestDraft.grading_dimensions.map(d => d.key).join(', ')}。每个核心能力是否都有对应维度？` },
   { key: 'edge_cases', prompt: `任务: ${bestDraft.prompt}。列举5个边界情况，检查当前评分标准能否识别。` }
 ]
@@ -258,6 +289,33 @@ const needsReview = criticalIssues.length > 0
 // ============ 阶段 6: 最终组装 ============
 phase('最终组装')
 
+// hybrid 类型：根据 automated/llm 维度的 weight 总和归一化计算 grading_weights
+// 框架 lib_grading.py 的 _combine_grades 会用此权重加权合并两类得分；
+// 若不输出此字段，框架会回退到 50/50 默认，可能与维度实际占比不符
+let gradingWeights = null
+if (analysis.grading_type === 'hybrid') {
+  const autoWeightSum = automatedDims.reduce((sum, d) => sum + d.weight, 0)
+  const llmWeightSum = llmDims.reduce((sum, d) => sum + d.weight, 0)
+  const totalWeight = autoWeightSum + llmWeightSum
+
+  if (totalWeight > 0 && autoWeightSum > 0 && llmWeightSum > 0) {
+    // 两类维度都存在：按维度 weight 占比分配，四舍五入到 0.05 并保证总和为 1
+    let autoRatio = Math.round((autoWeightSum / totalWeight) * 20) / 20
+    autoRatio = Math.min(0.95, Math.max(0.05, autoRatio))
+    const llmRatio = Math.round((1 - autoRatio) * 100) / 100
+    gradingWeights = { automated: autoRatio, llm_judge: llmRatio }
+  } else if (autoWeightSum > 0) {
+    // 只有自动化维度：以自动化为主，保留少量 LLM 权重
+    gradingWeights = { automated: 0.7, llm_judge: 0.3 }
+  } else if (llmWeightSum > 0) {
+    // 只有 LLM 维度：以 LLM 为主
+    gradingWeights = { automated: 0.3, llm_judge: 0.7 }
+  } else {
+    gradingWeights = { automated: 0.5, llm_judge: 0.5 }
+  }
+  log(`grading_weights: automated=${gradingWeights.automated}, llm_judge=${gradingWeights.llm_judge}`)
+}
+
 return {
   frontmatter: {
     name: bestDraft.name,
@@ -267,6 +325,7 @@ return {
     source: 'astronclaw',
     grading_type: analysis.grading_type,
     timeout_seconds: analysis.suggested_timeout,
+    ...(gradingWeights ? { grading_weights: gradingWeights } : {}),
     capabilities: analysis.capabilities,
     workspace_files: []
   },

@@ -12,6 +12,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+# 但不忽略 skills 目录下的 lib/ (这是源码，非虚拟环境)
+!skills/*/lib/
 parts/
 sdist/
 var/
