@@ -1,0 +1,28 @@
+# PinchBench 批量评测配置模板
+# 使用说明：
+# 1. 复制此文件到项目根目录：cp models-config.yaml.example ../../models-config.yaml
+# 2. 填写真实的 API 密钥和 base_url
+# 3. 该配置文件已在 .gitignore 中，不会被提交到 git
+
+# 裁判模型配置（唯一，用于 LLM 评分）
+judge:
+  model_id: anthropic/claude-sonnet-4-6
+  api_key: "your-judge-api-key"  # 替换为真实密钥
+  base_url: "https://one.iflytek.com/api/llm/console/chat"  # 裁判模型的 API 地址
+
+# 被评测模型列表（可配置多个，串行执行）
+models_under_test:
+  - model_id: xopglm5
+    api_key: "your-model-api-key"  # 替换为真实密钥
+    base_url: "https://maas-api.cn-huabei-1.xf-yun.com/v2"
+
+  - model_id: spark-x
+    api_key: "your-model-api-key"  # 替换为真实密钥
+    base_url: "https://spark-api.example.com"
+
+# 配置说明：
+# - judge: 裁判模型只有一个，用于评分所有被评测模型的输出
+# - models_under_test: 可以配置任意数量的被评测模型，按列表顺序串行执行
+# - model_id: 模型标识符
+# - api_key: 模型的 API 密钥（敏感信息）
+# - base_url: 模型的 API 端点地址

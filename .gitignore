@@ -65,6 +65,10 @@ dmypy.json
 # Project specific
 uv.lock
 results/
+results-astronclaw-local/
+results-auto/
+optimization-reports/
+models-config.yaml
 .pinchbench/
 
 # Vultr deployment
