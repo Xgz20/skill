@@ -2,6 +2,15 @@
 id: task_meeting_tech_decisions
 name: Meeting Decisions Extraction
 category: meeting_analysis
+scene: enterprise_product_intel
+sub_scene: meeting_decision_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- text_generation
+- instruction_following
+- output_format
+- context_memory
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

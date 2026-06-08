@@ -2,6 +2,15 @@
 id: task_meeting_council_neighborhood
 name: Tampa City Council – Identify Neighborhood and District Mentions
 category: meeting_analysis
+scene: data_retrieval_analysis
+sub_scene: meeting_transcript_location_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- text_generation
+- output_format
+- multi_step_reasoning
+- instruction_following
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

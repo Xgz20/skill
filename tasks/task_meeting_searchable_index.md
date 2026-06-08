@@ -2,6 +2,14 @@
 id: task_meeting_searchable_index
 name: Meeting Searchable Index
 category: meeting_analysis
+scene: content_creation_multimedia
+sub_scene: meeting_transcript_indexing
+difficulty: L2
+capabilities:
+- data_extraction
+- output_format
+- instruction_following
+- text_generation
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

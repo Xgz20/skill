@@ -2,6 +2,15 @@
 id: task_email_reply_drafting
 name: Email Reply Drafting from Unread Inbox
 category: writing
+scene: content_creation_multimedia
+sub_scene: email_reply_drafting
+difficulty: L2
+capabilities:
+- text_generation
+- instruction_following
+- data_extraction
+- output_format
+- tool_usage
 grading_type: llm_judge
 timeout_seconds: 240
 workspace_files:

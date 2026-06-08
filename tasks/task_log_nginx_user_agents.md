@@ -2,6 +2,15 @@
 id: task_log_nginx_user_agents
 name: Nginx Access Log - User Agent Analysis
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: log_user_agent_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- output_format
+- text_generation
+- tool_usage
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

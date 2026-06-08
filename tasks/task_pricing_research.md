@@ -2,6 +2,15 @@
 id: task_pricing_research
 name: Vendor Pricing Comparison
 category: research
+scene: deep_research_report
+sub_scene: vendor_pricing_comparison
+difficulty: L3
+capabilities:
+- information_retrieval
+- text_generation
+- domain_reasoning
+- output_format
+- multi_step_reasoning
 grading_type: llm_judge
 timeout_seconds: 300
 workspace_files: []

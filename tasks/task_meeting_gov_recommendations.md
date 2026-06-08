@@ -2,6 +2,15 @@
 id: task_meeting_gov_recommendations
 name: NASA UAP Hearing Panel Recommendations
 category: meeting_analysis
+scene: data_retrieval_analysis
+sub_scene: meeting_transcript_recommendation_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- information_retrieval
+- text_generation
+- instruction_following
+- output_format
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

@@ -2,6 +2,14 @@
 id: task_log_hdfs_connections
 name: HDFS DataNode Log - Connection Pattern Analysis
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: log_connection_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- output_format
+- tool_usage
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

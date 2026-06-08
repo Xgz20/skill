@@ -2,6 +2,14 @@
 id: task_skill_search
 name: Search and Replace in Files
 category: skills
+scene: local_env_scripting
+sub_scene: config_file_search_replace
+difficulty: L2
+capabilities:
+- instruction_following
+- tool_usage
+- output_format
+- text_generation
 grading_type: automated
 timeout_seconds: 180
 workspace_files:

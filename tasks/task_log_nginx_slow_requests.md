@@ -2,6 +2,15 @@
 id: task_log_nginx_slow_requests
 name: Nginx Access Log - Find Largest Responses
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: access_log_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- output_format
+- code_generation
+- instruction_following
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

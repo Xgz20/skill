@@ -2,6 +2,15 @@
 id: task_readme_generation
 name: README Generation
 category: writing
+scene: content_creation_multimedia
+sub_scene: readme_documentation_generation
+difficulty: L2
+capabilities:
+- data_extraction
+- text_generation
+- instruction_following
+- output_format
+- hallucination_resistance
 grading_type: llm_judge
 timeout_seconds: 180
 workspace_files:

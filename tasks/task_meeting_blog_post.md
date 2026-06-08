@@ -2,6 +2,14 @@
 id: task_meeting_blog_post
 name: Meeting to Blog Post
 category: meeting_analysis
+scene: content_creation_multimedia
+sub_scene: meeting_to_blog_post
+difficulty: L2
+capabilities:
+- text_generation
+- instruction_following
+- data_extraction
+- output_format
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

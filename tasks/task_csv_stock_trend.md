@@ -2,6 +2,15 @@
 id: task_csv_stock_trend
 name: Apple Stock 2014 Trend Analysis
 category: csv_analysis
+scene: data_retrieval_analysis
+sub_scene: stock_trend_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- domain_reasoning
+- output_format
+- text_generation
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

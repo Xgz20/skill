@@ -2,6 +2,15 @@
 id: task_events
 name: Tech Conference Research
 category: research
+scene: deep_research_report
+sub_scene: tech_conference_research
+difficulty: L2
+capabilities:
+- information_retrieval
+- hallucination_resistance
+- output_format
+- tool_usage
+- text_generation
 grading_type: llm_judge
 timeout_seconds: 300
 workspace_files: []

@@ -2,6 +2,15 @@
 id: task_todo_list_cleanup
 name: Todo List Cleanup
 category: productivity
+scene: data_retrieval_analysis
+sub_scene: json_data_cleanup
+difficulty: L2
+capabilities:
+- instruction_following
+- data_extraction
+- output_format
+- multi_step_reasoning
+- tool_usage
 grading_type: automated
 timeout_seconds: 120
 workspace_files:

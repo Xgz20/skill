@@ -2,6 +2,15 @@
 id: task_csv_gdp_regions
 name: World GDP Regional Analysis
 category: csv_analysis
+scene: data_retrieval_analysis
+sub_scene: csv_data_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- instruction_following
+- text_generation
+- output_format
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

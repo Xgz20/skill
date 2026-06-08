@@ -2,6 +2,14 @@
 id: task_openclaw_comprehension
 name: OpenClaw Report Comprehension
 category: analysis
+scene: data_retrieval_analysis
+sub_scene: pdf_information_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- multimodal_perception
+- instruction_following
+- output_format
 grading_type: automated
 timeout_seconds: 300
 workspace_files:

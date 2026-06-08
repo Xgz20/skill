@@ -2,6 +2,14 @@
 id: task_meeting_advisory_stakeholders
 name: NTIA Advisory Board Stakeholder Interests
 category: meeting_analysis
+scene: deep_research_report
+sub_scene: meeting_stakeholder_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- text_generation
+- instruction_following
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

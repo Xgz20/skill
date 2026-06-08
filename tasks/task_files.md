@@ -2,6 +2,14 @@
 id: task_files
 name: File Structure Creation
 category: skills
+scene: local_env_scripting
+sub_scene: project_structure_scaffolding
+difficulty: L2
+capabilities:
+- instruction_following
+- tool_usage
+- code_generation
+- output_format
 grading_type: automated
 timeout_seconds: 120
 workspace_files: []

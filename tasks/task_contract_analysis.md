@@ -2,6 +2,15 @@
 id: task_contract_analysis
 name: Contract/Legal Analysis
 category: analysis
+scene: data_retrieval_analysis
+sub_scene: legal_contract_analysis
+difficulty: L2
+capabilities:
+- multimodal_perception
+- data_extraction
+- domain_reasoning
+- multi_step_reasoning
+- output_format
 grading_type: llm_judge
 timeout_seconds: 300
 workspace_files:

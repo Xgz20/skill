@@ -2,6 +2,15 @@
 id: task_log_hdfs_storage
 name: HDFS DataNode Log - Storage and Capacity Analysis
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: hdfs_log_storage_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- domain_reasoning
+- output_format
+- text_generation
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

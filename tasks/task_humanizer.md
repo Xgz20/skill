@@ -2,6 +2,15 @@
 id: task_humanizer
 name: Humanize AI-Generated Blog
 category: writing
+scene: skill_lifecycle
+sub_scene: skill_install_and_use
+difficulty: L2
+capabilities:
+- instruction_following
+- tool_usage
+- text_generation
+- output_format
+- service_integration
 grading_type: llm_judge
 timeout_seconds: 120
 workspace_files:

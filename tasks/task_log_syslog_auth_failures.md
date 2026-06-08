@@ -2,6 +2,15 @@
 id: task_log_syslog_auth_failures
 name: Linux Syslog - Authentication Failure Summary
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: log_auth_failure_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- tool_usage
+- multi_step_reasoning
+- text_generation
+- output_format
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

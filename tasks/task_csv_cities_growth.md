@@ -2,6 +2,15 @@
 id: task_csv_cities_growth
 name: US Cities Geographic Distribution Analysis
 category: csv_analysis
+scene: data_retrieval_analysis
+sub_scene: csv_geographic_distribution_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- code_generation
+- output_format
+- text_generation
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

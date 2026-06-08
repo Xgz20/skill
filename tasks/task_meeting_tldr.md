@@ -2,6 +2,14 @@
 id: task_meeting_tldr
 name: Meeting TL;DR
 category: meeting_analysis
+scene: content_creation_multimedia
+sub_scene: meeting_summarization
+difficulty: L2
+capabilities:
+- instruction_following
+- text_generation
+- data_extraction
+- output_format
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

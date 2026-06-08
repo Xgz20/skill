@@ -2,6 +2,13 @@
 id: task_eli5_pdf_summary
 name: ELI5 PDF Summarization
 category: analysis
+scene: content_creation_multimedia
+sub_scene: pdf_simplified_summarization
+difficulty: L2
+capabilities:
+- multimodal_perception
+- text_generation
+- output_format
 grading_type: llm_judge
 timeout_seconds: 300
 workspace_files:

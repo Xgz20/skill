@@ -2,6 +2,14 @@
 id: task_image_gen
 name: AI Image Generation
 category: skills
+scene: content_creation_multimedia
+sub_scene: ai_image_generation
+difficulty: L1
+capabilities:
+- tool_usage
+- instruction_following
+- multimodal_perception
+- output_format
 grading_type: hybrid
 timeout_seconds: 120
 workspace_files: []

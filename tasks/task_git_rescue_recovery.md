@@ -2,6 +2,14 @@
 id: task_git_rescue_recovery
 name: Git Rescue / Recovery
 category: coding
+scene: local_env_scripting
+sub_scene: git_branch_recovery_scripting
+difficulty: L1
+capabilities:
+- code_generation
+- multi_step_reasoning
+- instruction_following
+- output_format
 grading_type: automated
 timeout_seconds: 120
 workspace_files: []

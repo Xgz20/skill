@@ -2,6 +2,14 @@
 id: task_memory
 name: Memory Retrieval from Context
 category: memory
+scene: data_retrieval_analysis
+sub_scene: note_file_information_lookup
+difficulty: L1
+capabilities:
+- context_memory
+- data_extraction
+- instruction_following
+- tool_usage
 grading_type: automated
 timeout_seconds: 120
 workspace_files:

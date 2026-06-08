@@ -2,6 +2,15 @@
 id: task_byok_best_practices
 name: BYOK Best Practices for AI Inference
 category: research
+scene: deep_research_report
+sub_scene: byok_security_guide
+difficulty: L3
+capabilities:
+- information_retrieval
+- text_generation
+- domain_reasoning
+- output_format
+- multi_step_reasoning
 grading_type: llm_judge
 timeout_seconds: 300
 workspace_files: []

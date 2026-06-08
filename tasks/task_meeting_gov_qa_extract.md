@@ -2,6 +2,15 @@
 id: task_meeting_gov_qa_extract
 name: NASA UAP Hearing Q&A Extraction
 category: meeting_analysis
+scene: data_retrieval_analysis
+sub_scene: meeting_transcript_qa_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- text_generation
+- output_format
+- instruction_following
+- context_memory
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

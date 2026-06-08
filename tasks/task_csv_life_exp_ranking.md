@@ -2,6 +2,15 @@
 id: task_csv_life_exp_ranking
 name: Life Expectancy Country Ranking
 category: csv_analysis
+scene: data_retrieval_analysis
+sub_scene: csv_ranking_analysis
+difficulty: L2
+capabilities:
+- tool_usage
+- data_extraction
+- multi_step_reasoning
+- output_format
+- text_generation
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

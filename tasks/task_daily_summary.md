@@ -2,6 +2,15 @@
 id: task_daily_summary
 name: Daily Research Summary Generation
 category: productivity
+scene: enterprise_product_intel
+sub_scene: executive_briefing_synthesis
+difficulty: L2
+capabilities:
+- information_retrieval
+- data_extraction
+- text_generation
+- output_format
+- multi_step_reasoning
 grading_type: llm_judge
 timeout_seconds: 300
 workspace_files:

@@ -2,6 +2,15 @@
 id: task_log_syslog_boot
 name: Linux Syslog Boot Sequence Analysis
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: log_boot_sequence_analysis
+difficulty: L3
+capabilities:
+- data_extraction
+- instruction_following
+- multi_step_reasoning
+- output_format
+- domain_reasoning
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

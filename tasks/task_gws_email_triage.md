@@ -2,6 +2,15 @@
 id: task_gws_email_triage
 name: GWS Email Triage
 category: integrations
+scene: data_retrieval_analysis
+sub_scene: email_triage
+difficulty: L3
+capabilities:
+- tool_usage
+- service_integration
+- data_extraction
+- text_generation
+- multi_step_reasoning
 grading_type: hybrid
 timeout_seconds: 300
 grading_weights:

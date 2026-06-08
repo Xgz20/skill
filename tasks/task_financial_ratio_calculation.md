@@ -2,6 +2,15 @@
 id: task_financial_ratio_calculation
 name: Financial Ratio Calculation
 category: analysis
+scene: finance_investment_research
+sub_scene: financial_ratio_calculation
+difficulty: L2
+capabilities:
+- information_retrieval
+- data_extraction
+- domain_reasoning
+- multi_step_reasoning
+- output_format
 grading_type: automated
 timeout_seconds: 240
 workspace_files: []

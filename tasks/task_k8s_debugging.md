@@ -2,6 +2,15 @@
 id: task_k8s_debugging
 name: K8s/IaC Debugging
 category: coding
+scene: local_env_scripting
+sub_scene: kubernetes_manifest_debugging
+difficulty: L2
+capabilities:
+- domain_reasoning
+- code_generation
+- multi_step_reasoning
+- tool_usage
+- safety_awareness
 grading_type: automated
 timeout_seconds: 120
 workspace_files:

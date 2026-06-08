@@ -2,6 +2,15 @@
 id: task_log_hdfs_block_ops
 name: HDFS DataNode Log - Block Operations Summary
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: hdfs_log_block_operations_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- output_format
+- instruction_following
+- tool_usage
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

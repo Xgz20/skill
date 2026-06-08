@@ -2,6 +2,15 @@
 id: task_playwright_e2e
 name: Playwright E2E Form Test
 category: coding
+scene: local_env_scripting
+sub_scene: browser_end_to_end_test_generation
+difficulty: L2
+capabilities:
+- code_generation
+- instruction_following
+- multi_step_reasoning
+- tool_usage
+- output_format
 grading_type: hybrid
 timeout_seconds: 300
 workspace_files:

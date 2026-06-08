@@ -2,6 +2,15 @@
 id: task_meeting_advisory_technical
 name: NTIA Advisory Board Technical Discussions
 category: meeting_analysis
+scene: data_retrieval_analysis
+sub_scene: meeting_transcript_technical_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- domain_reasoning
+- text_generation
+- instruction_following
+- output_format
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

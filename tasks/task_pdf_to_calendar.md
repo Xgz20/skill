@@ -2,6 +2,15 @@
 id: task_pdf_to_calendar
 name: PDF to Calendar Import
 category: productivity
+scene: local_env_scripting
+sub_scene: pdf_to_ics_conversion
+difficulty: L2
+capabilities:
+- multimodal_perception
+- data_extraction
+- output_format
+- instruction_following
+- tool_usage
 grading_type: automated
 timeout_seconds: 180
 workspace_files:

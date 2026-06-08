@@ -2,6 +2,15 @@
 id: task_gws_task_management
 name: GWS Task Management
 category: integrations
+scene: skill_lifecycle
+sub_scene: task_inbox_workflow
+difficulty: L2
+capabilities:
+- tool_usage
+- data_extraction
+- multi_step_reasoning
+- service_integration
+- output_format
 grading_type: hybrid
 timeout_seconds: 300
 grading_weights:

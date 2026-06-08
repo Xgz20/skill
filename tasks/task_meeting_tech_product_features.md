@@ -2,6 +2,15 @@
 id: task_meeting_tech_product_features
 name: Meeting Product Feature Prioritization
 category: meeting_analysis
+scene: enterprise_product_intel
+sub_scene: meeting_feature_prioritization
+difficulty: L2
+capabilities:
+- data_extraction
+- instruction_following
+- output_format
+- text_generation
+- multi_step_reasoning
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

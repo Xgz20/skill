@@ -2,6 +2,13 @@
 id: task_weather
 name: Weather Script Creation
 category: coding
+scene: local_env_scripting
+sub_scene: weather_api_script_generation
+difficulty: L1
+capabilities:
+- code_generation
+- instruction_following
+- output_format
 grading_type: automated
 timeout_seconds: 180
 workspace_files: []

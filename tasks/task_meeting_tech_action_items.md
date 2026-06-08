@@ -2,6 +2,15 @@
 id: task_meeting_tech_action_items
 name: Meeting Action Items Extraction
 category: meeting_analysis
+scene: content_creation_multimedia
+sub_scene: meeting_action_item_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- text_generation
+- instruction_following
+- output_format
+- multi_step_reasoning
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

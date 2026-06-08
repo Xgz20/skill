@@ -2,6 +2,15 @@
 id: task_stock
 name: Stock Price Research
 category: research
+scene: finance_investment_research
+sub_scene: realtime_quote_lookup
+difficulty: L2
+capabilities:
+- information_retrieval
+- tool_usage
+- data_extraction
+- output_format
+- text_generation
 grading_type: automated
 timeout_seconds: 180
 workspace_files: []

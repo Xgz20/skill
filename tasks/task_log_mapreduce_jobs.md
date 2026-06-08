@@ -2,6 +2,14 @@
 id: task_log_mapreduce_jobs
 name: MapReduce Log - Job Completion Summary
 category: log_analysis
+scene: local_env_scripting
+sub_scene: log_pattern_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- output_format
+- tool_usage
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

@@ -2,6 +2,15 @@
 id: task_log_ssh_successful
 name: SSH Auth Log - Successful Authentication Summary
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: ssh_auth_log_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- instruction_following
+- output_format
+- text_generation
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

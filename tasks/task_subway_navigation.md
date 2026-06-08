@@ -2,6 +2,15 @@
 id: task_subway_navigation
 name: NYC Subway Navigation
 category: productivity
+scene: content_creation_multimedia
+sub_scene: transit_route_planning
+difficulty: L2
+capabilities:
+- instruction_following
+- data_extraction
+- multi_step_reasoning
+- text_generation
+- output_format
 grading_type: llm_judge
 timeout_seconds: 180
 workspace_files:

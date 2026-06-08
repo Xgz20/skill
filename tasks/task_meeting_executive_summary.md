@@ -2,6 +2,15 @@
 id: task_meeting_executive_summary
 name: Meeting Executive Summary
 category: meeting_analysis
+scene: content_creation_multimedia
+sub_scene: meeting_summary_generation
+difficulty: L2
+capabilities:
+- text_generation
+- data_extraction
+- instruction_following
+- output_format
+- hallucination_resistance
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

@@ -2,6 +2,14 @@
 id: task_second_brain
 name: Second Brain Knowledge Persistence
 category: memory
+scene: local_env_scripting
+sub_scene: file_based_memory_persistence
+difficulty: L2
+capabilities:
+- context_memory
+- tool_usage
+- output_format
+- hallucination_resistance
 grading_type: hybrid
 timeout_seconds: 300
 multi_session: true

@@ -2,6 +2,15 @@
 id: task_log_apache_error_summary
 name: Apache Error Log - Generate Error Summary Report
 category: log_analysis
+scene: local_env_scripting
+sub_scene: log_pattern_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- tool_usage
+- output_format
+- domain_reasoning
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

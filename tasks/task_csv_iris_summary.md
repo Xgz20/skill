@@ -2,6 +2,15 @@
 id: task_csv_iris_summary
 name: Iris Flowers Statistical Summary
 category: csv_analysis
+scene: data_retrieval_analysis
+sub_scene: csv_statistical_summary
+difficulty: L2
+capabilities:
+- data_extraction
+- code_generation
+- multi_step_reasoning
+- output_format
+- text_generation
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

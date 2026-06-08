@@ -2,6 +2,15 @@
 id: task_csv_stations_filter
 name: Idaho Weather Stations Multi-Criteria Filtering
 category: csv_analysis
+scene: data_retrieval_analysis
+sub_scene: csv_data_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- output_format
+- tool_usage
+- instruction_following
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

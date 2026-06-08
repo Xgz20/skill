@@ -2,6 +2,13 @@
 id: task_blog
 name: Blog Post Writing
 category: writing
+scene: content_creation_multimedia
+sub_scene: blog_post_writing
+difficulty: L1
+capabilities:
+- text_generation
+- output_format
+- instruction_following
 grading_type: llm_judge
 timeout_seconds: 300
 workspace_files: []

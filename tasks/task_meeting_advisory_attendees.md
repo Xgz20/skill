@@ -2,6 +2,14 @@
 id: task_meeting_advisory_attendees
 name: NTIA Advisory Board Attendee List
 category: meeting_analysis
+scene: data_retrieval_analysis
+sub_scene: meeting_transcript_attendee_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- instruction_following
+- output_format
+- multi_step_reasoning
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

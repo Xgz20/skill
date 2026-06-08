@@ -2,6 +2,15 @@
 id: task_log_syslog_anomalies
 name: Linux Syslog - Anomaly Detection
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: log_anomaly_detection
+difficulty: L2
+capabilities:
+- data_extraction
+- tool_usage
+- multi_step_reasoning
+- output_format
+- domain_reasoning
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

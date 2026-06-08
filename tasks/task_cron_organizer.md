@@ -2,6 +2,14 @@
 id: task_cron_organizer
 name: Cron Expression Generator
 category: productivity
+scene: local_env_scripting
+sub_scene: cron_expression_generation
+difficulty: L1
+capabilities:
+- domain_reasoning
+- output_format
+- instruction_following
+- tool_usage
 grading_type: automated
 timeout_seconds: 120
 workspace_files: []

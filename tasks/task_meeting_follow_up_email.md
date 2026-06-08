@@ -2,6 +2,15 @@
 id: task_meeting_follow_up_email
 name: Meeting Follow-Up Email
 category: meeting_analysis
+scene: content_creation_multimedia
+sub_scene: meeting_follow_up_email
+difficulty: L2
+capabilities:
+- data_extraction
+- text_generation
+- instruction_following
+- output_format
+- hallucination_resistance
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

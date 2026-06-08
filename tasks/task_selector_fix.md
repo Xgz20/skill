@@ -2,6 +2,14 @@
 id: task_selector_fix
 name: Test Maintenance / Selector Fix
 category: coding
+scene: local_env_scripting
+sub_scene: test_selector_refactor
+difficulty: L2
+capabilities:
+- code_generation
+- instruction_following
+- multi_step_reasoning
+- data_extraction
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

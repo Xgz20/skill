@@ -2,6 +2,15 @@
 id: task_market_research
 name: Competitive Market Research
 category: research
+scene: enterprise_product_intel
+sub_scene: competitive_landscape_analysis
+difficulty: L3
+capabilities:
+- information_retrieval
+- text_generation
+- output_format
+- instruction_following
+- multi_step_reasoning
 grading_type: hybrid
 timeout_seconds: 300
 workspace_files: []

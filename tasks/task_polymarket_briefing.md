@@ -1,7 +1,16 @@
 ---
 id: task_polymarket_briefing
 name: Polymarket + News Briefing
-category: Research
+category: research
+scene: finance_investment_research
+sub_scene: prediction_market_news_briefing
+difficulty: L2
+capabilities:
+- hallucination_resistance
+- information_retrieval
+- data_extraction
+- output_format
+- text_generation
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files: []

@@ -2,6 +2,15 @@
 id: task_workflow
 name: Multi-step API Workflow
 category: skills
+scene: local_env_scripting
+sub_scene: config_driven_script_generation
+difficulty: L2
+capabilities:
+- multi_step_reasoning
+- code_generation
+- data_extraction
+- text_generation
+- instruction_following
 grading_type: hybrid
 timeout_seconds: 300
 workspace_files:

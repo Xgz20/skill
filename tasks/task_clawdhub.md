@@ -2,6 +2,14 @@
 id: task_clawdhub
 name: Create Project Structure
 category: skills
+scene: local_env_scripting
+sub_scene: python_project_scaffold
+difficulty: L2
+capabilities:
+- instruction_following
+- output_format
+- domain_reasoning
+- tool_usage
 grading_type: automated
 timeout_seconds: 120
 workspace_files: []

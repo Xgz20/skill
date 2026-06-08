@@ -2,6 +2,14 @@
 id: task_multi_file_refactoring
 name: Multi-file Refactoring
 category: coding
+scene: local_env_scripting
+sub_scene: multi_file_function_rename
+difficulty: L3
+capabilities:
+- code_generation
+- instruction_following
+- multi_step_reasoning
+- tool_usage
 grading_type: automated
 timeout_seconds: 120
 workspace_files:

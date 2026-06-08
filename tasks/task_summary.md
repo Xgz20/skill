@@ -2,6 +2,15 @@
 id: task_summary
 name: Document Summarization
 category: analysis
+scene: content_creation_multimedia
+sub_scene: document_summarization
+difficulty: L2
+capabilities:
+- text_generation
+- instruction_following
+- output_format
+- tool_usage
+- hallucination_resistance
 grading_type: llm_judge
 timeout_seconds: 240
 workspace_files:

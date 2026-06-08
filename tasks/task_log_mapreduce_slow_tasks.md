@@ -2,6 +2,14 @@
 id: task_log_mapreduce_slow_tasks
 name: MapReduce Log - Slow Task Identification
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: log_timing_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- output_format
+- text_generation
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

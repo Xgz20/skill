@@ -2,6 +2,15 @@
 id: task_email_triage
 name: Email Inbox Triage
 category: productivity
+scene: data_retrieval_analysis
+sub_scene: email_triage
+difficulty: L2
+capabilities:
+- instruction_following
+- data_extraction
+- multi_step_reasoning
+- output_format
+- text_generation
 grading_type: hybrid
 timeout_seconds: 240
 grading_weights:

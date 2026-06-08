@@ -2,6 +2,14 @@
 id: task_log_mapreduce_timeline
 name: MapReduce Log - Job Timeline Visualization
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: log_timeline_visualization
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- output_format
+- instruction_following
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

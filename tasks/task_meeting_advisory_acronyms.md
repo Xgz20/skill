@@ -2,6 +2,14 @@
 id: task_meeting_advisory_acronyms
 name: NTIA Advisory Board Acronym Glossary
 category: meeting_analysis
+scene: data_retrieval_analysis
+sub_scene: meeting_transcript_acronym_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- domain_reasoning
+- output_format
+- instruction_following
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

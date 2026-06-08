@@ -2,6 +2,15 @@
 id: task_meeting_advisory_timeline
 name: NTIA Advisory Board Timeline and Deadlines
 category: meeting_analysis
+scene: data_retrieval_analysis
+sub_scene: meeting_transcript_timeline_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- text_generation
+- output_format
+- instruction_following
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

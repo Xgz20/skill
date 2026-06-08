@@ -2,6 +2,15 @@
 id: task_deep_research
 name: Deep Research with Citations
 category: research
+scene: deep_research_report
+sub_scene: tech_trend_research_with_citations
+difficulty: L3
+capabilities:
+- information_retrieval
+- multi_step_reasoning
+- text_generation
+- tool_usage
+- domain_reasoning
 grading_type: llm_judge
 timeout_seconds: 300
 workspace_files: []

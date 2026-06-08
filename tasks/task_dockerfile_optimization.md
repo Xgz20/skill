@@ -2,6 +2,14 @@
 id: task_dockerfile_optimization
 name: Dockerfile Optimization
 category: coding
+scene: local_env_scripting
+sub_scene: dockerfile_optimization
+difficulty: L2
+capabilities:
+- instruction_following
+- code_generation
+- domain_reasoning
+- output_format
 grading_type: automated
 timeout_seconds: 120
 workspace_files:

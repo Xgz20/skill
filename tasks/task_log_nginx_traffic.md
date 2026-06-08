@@ -2,6 +2,15 @@
 id: task_log_nginx_traffic
 name: Nginx Access Log - Traffic Patterns by Time
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: nginx_log_traffic_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- tool_usage
+- output_format
+- text_generation
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

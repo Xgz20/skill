@@ -2,6 +2,15 @@
 id: task_meeting_council_contact_info
 name: Tampa City Council – Extract Contact Information
 category: meeting_analysis
+scene: data_retrieval_analysis
+sub_scene: meeting_transcript_contact_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- output_format
+- instruction_following
+- context_memory
+- text_generation
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

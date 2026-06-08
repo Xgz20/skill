@@ -2,6 +2,15 @@
 id: task_meeting_gov_next_steps
 name: NASA UAP Hearing Next Steps Extraction
 category: meeting_analysis
+scene: content_creation_multimedia
+sub_scene: meeting_action_item_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- instruction_following
+- multi_step_reasoning
+- text_generation
+- output_format
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

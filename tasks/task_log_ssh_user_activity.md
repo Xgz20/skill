@@ -2,6 +2,15 @@
 id: task_log_ssh_user_activity
 name: SSH Auth Log - User Login Activity Report
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: ssh_log_user_activity_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- text_generation
+- output_format
+- domain_reasoning
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

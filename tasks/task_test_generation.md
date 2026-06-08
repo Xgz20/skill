@@ -2,6 +2,14 @@
 id: task_test_generation
 name: Test Generation
 category: coding
+scene: local_env_scripting
+sub_scene: unit_test_generation
+difficulty: L2
+capabilities:
+- code_generation
+- instruction_following
+- multi_step_reasoning
+- tool_usage
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

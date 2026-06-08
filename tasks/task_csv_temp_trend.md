@@ -2,6 +2,14 @@
 id: task_csv_temp_trend
 name: Global Temperature Trend Analysis
 category: csv_analysis
+scene: data_retrieval_analysis
+sub_scene: csv_data_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- code_generation
+- multi_step_reasoning
+- output_format
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

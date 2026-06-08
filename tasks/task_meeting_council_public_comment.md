@@ -2,6 +2,14 @@
 id: task_meeting_council_public_comment
 name: Tampa City Council – Summarize Public Comments
 category: meeting_analysis
+scene: content_creation_multimedia
+sub_scene: meeting_transcript_summarization
+difficulty: L2
+capabilities:
+- data_extraction
+- text_generation
+- output_format
+- instruction_following
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

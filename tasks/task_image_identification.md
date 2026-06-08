@@ -2,6 +2,14 @@
 id: task_image_identification
 name: Image Identification (Phone, Food, Menu)
 category: analysis
+scene: data_retrieval_analysis
+sub_scene: image_classification
+difficulty: L2
+capabilities:
+- multimodal_perception
+- output_format
+- instruction_following
+- tool_usage
 grading_type: automated
 timeout_seconds: 150
 workspace_files:

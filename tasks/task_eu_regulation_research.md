@@ -2,6 +2,15 @@
 id: task_eu_regulation_research
 name: EU AI Act Compliance Research
 category: research
+scene: deep_research_report
+sub_scene: regulatory_compliance_research
+difficulty: L3
+capabilities:
+- information_retrieval
+- domain_reasoning
+- text_generation
+- output_format
+- instruction_following
 grading_type: llm_judge
 timeout_seconds: 300
 workspace_files: []

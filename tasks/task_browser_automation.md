@@ -2,6 +2,15 @@
 id: task_browser_automation
 name: Browser Automation Workflow
 category: coding
+scene: local_env_scripting
+sub_scene: browser_automation_testing
+difficulty: L2
+capabilities:
+- code_generation
+- instruction_following
+- multi_step_reasoning
+- tool_usage
+- output_format
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

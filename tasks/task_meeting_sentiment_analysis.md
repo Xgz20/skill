@@ -2,6 +2,15 @@
 id: task_meeting_sentiment_analysis
 name: Meeting Sentiment Analysis
 category: meeting_analysis
+scene: content_creation_multimedia
+sub_scene: meeting_sentiment_analysis
+difficulty: L2
+capabilities:
+- instruction_following
+- data_extraction
+- multi_step_reasoning
+- text_generation
+- output_format
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

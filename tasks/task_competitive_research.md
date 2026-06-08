@@ -2,6 +2,15 @@
 id: task_competitive_research
 name: Competitive Product Comparison
 category: research
+scene: enterprise_product_intel
+sub_scene: competitive_product_comparison
+difficulty: L3
+capabilities:
+- information_retrieval
+- text_generation
+- tool_usage
+- multi_step_reasoning
+- output_format
 grading_type: llm_judge
 timeout_seconds: 300
 workspace_files: []

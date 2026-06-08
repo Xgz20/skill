@@ -2,6 +2,15 @@
 id: task_access_log_anomaly
 name: Access Control Log Anomaly Detection
 category: analysis
+scene: data_retrieval_analysis
+sub_scene: log_anomaly_detection
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- instruction_following
+- output_format
+- code_generation
 grading_type: automated
 timeout_seconds: 90
 workspace_files:

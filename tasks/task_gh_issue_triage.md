@@ -2,6 +2,15 @@
 id: task_gh_issue_triage
 name: GitHub Issue Triage
 category: skills
+scene: skill_lifecycle
+sub_scene: github_issue_triage
+difficulty: L2
+capabilities:
+- tool_usage
+- service_integration
+- multi_step_reasoning
+- text_generation
+- output_format
 grading_type: hybrid
 timeout_seconds: 300
 grading_weights:

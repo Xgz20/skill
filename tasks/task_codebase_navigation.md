@@ -2,6 +2,14 @@
 id: task_codebase_navigation
 name: Codebase Navigation
 category: coding
+scene: deep_research_report
+sub_scene: codebase_navigation_analysis
+difficulty: L3
+capabilities:
+- information_retrieval
+- multi_step_reasoning
+- tool_usage
+- text_generation
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files: []

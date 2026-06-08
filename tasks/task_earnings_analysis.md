@@ -2,6 +2,15 @@
 id: task_earnings_analysis
 name: Earnings Analysis
 category: analysis
+scene: finance_investment_research
+sub_scene: earnings_margin_guidance_analysis
+difficulty: L2
+capabilities:
+- information_retrieval
+- domain_reasoning
+- data_extraction
+- output_format
+- text_generation
 grading_type: automated
 timeout_seconds: 240
 workspace_files: []

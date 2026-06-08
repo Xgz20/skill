@@ -2,6 +2,14 @@
 id: task_meeting_gov_speaker_summary
 name: NASA UAP Hearing Speaker Summary
 category: meeting_analysis
+scene: content_creation_multimedia
+sub_scene: meeting_transcript_speaker_summary
+difficulty: L2
+capabilities:
+- data_extraction
+- text_generation
+- instruction_following
+- output_format
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

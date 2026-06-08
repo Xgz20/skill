@@ -2,6 +2,15 @@
 id: task_csv_temp_decades
 name: Global Temperature Decade Comparison
 category: csv_analysis
+scene: data_retrieval_analysis
+sub_scene: csv_statistical_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- output_format
+- tool_usage
+- domain_reasoning
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

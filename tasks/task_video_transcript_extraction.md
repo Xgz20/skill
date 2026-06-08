@@ -2,6 +2,15 @@
 id: task_video_transcript_extraction
 name: Video Transcript Extraction and Summary
 category: coding
+scene: content_creation_multimedia
+sub_scene: video_transcript_summarization
+difficulty: L2
+capabilities:
+- service_integration
+- data_extraction
+- text_generation
+- tool_usage
+- output_format
 grading_type: llm_judge
 timeout_seconds: 300
 workspace_files: []

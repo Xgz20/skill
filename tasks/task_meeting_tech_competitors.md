@@ -2,6 +2,15 @@
 id: task_meeting_tech_competitors
 name: Meeting Competitor Analysis Extraction
 category: meeting_analysis
+scene: enterprise_product_intel
+sub_scene: meeting_competitor_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- instruction_following
+- output_format
+- text_generation
+- multi_step_reasoning
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

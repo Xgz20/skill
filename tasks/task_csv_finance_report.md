@@ -2,6 +2,15 @@
 id: task_csv_finance_report
 name: Apple Stock 2014 Comprehensive Finance Report
 category: csv_analysis
+scene: finance_investment_research
+sub_scene: csv_financial_report_generation
+difficulty: L3
+capabilities:
+- data_extraction
+- domain_reasoning
+- multi_step_reasoning
+- output_format
+- code_generation
 grading_type: llm_judge
 timeout_seconds: 180
 workspace_files:

@@ -2,6 +2,15 @@
 id: task_csv_pension_liability
 name: US Pension Fund Liability Analysis
 category: csv_analysis
+scene: finance_investment_research
+sub_scene: pension_liability_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- domain_reasoning
+- output_format
+- tool_usage
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

@@ -2,6 +2,15 @@
 id: task_log_apache_top_errors
 name: Apache Error Log - Rank Top Error Types
 category: log_analysis
+scene: local_env_scripting
+sub_scene: log_pattern_extraction
+difficulty: L2
+capabilities:
+- tool_usage
+- data_extraction
+- multi_step_reasoning
+- output_format
+- text_generation
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

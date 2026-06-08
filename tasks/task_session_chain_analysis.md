@@ -2,6 +2,15 @@
 id: task_session_chain_analysis
 name: Session Chain Analysis & Design Review
 category: analysis
+scene: data_retrieval_analysis
+sub_scene: code_chain_design_review
+difficulty: L3
+capabilities:
+- context_memory
+- data_extraction
+- output_format
+- multi_step_reasoning
+- instruction_following
 grading_type: automated
 timeout_seconds: 300
 multi_session: true

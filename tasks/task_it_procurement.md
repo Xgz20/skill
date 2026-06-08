@@ -2,6 +2,15 @@
 id: task_it_procurement
 name: IT Procurement Research
 category: research
+scene: enterprise_product_intel
+sub_scene: it_hardware_procurement
+difficulty: L2
+capabilities:
+- information_retrieval
+- data_extraction
+- multi_step_reasoning
+- output_format
+- domain_reasoning
 grading_type: llm_judge
 timeout_seconds: 300
 workspace_files: []

@@ -2,6 +2,15 @@
 id: task_gws_cross_service
 name: GWS Cross-Service Workflow
 category: integrations
+scene: local_env_scripting
+sub_scene: cross_service_workflow_automation
+difficulty: L2
+capabilities:
+- service_integration
+- tool_usage
+- multi_step_reasoning
+- data_extraction
+- instruction_following
 grading_type: hybrid
 timeout_seconds: 300
 grading_weights:

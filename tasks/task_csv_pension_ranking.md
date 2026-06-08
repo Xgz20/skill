@@ -2,6 +2,15 @@
 id: task_csv_pension_ranking
 name: US Pension Fund State Ranking
 category: csv_analysis
+scene: data_retrieval_analysis
+sub_scene: csv_ranking_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- text_generation
+- output_format
+- instruction_following
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

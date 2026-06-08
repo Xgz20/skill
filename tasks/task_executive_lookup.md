@@ -2,6 +2,14 @@
 id: task_executive_lookup
 name: Executive Lookup
 category: research
+scene: data_retrieval_analysis
+sub_scene: executive_lookup
+difficulty: L2
+capabilities:
+- information_retrieval
+- tool_usage
+- output_format
+- hallucination_resistance
 grading_type: automated
 timeout_seconds: 180
 workspace_files: []

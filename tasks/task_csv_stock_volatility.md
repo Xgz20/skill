@@ -2,6 +2,15 @@
 id: task_csv_stock_volatility
 name: Apple Stock 2014 Volatility Analysis
 category: csv_analysis
+scene: finance_investment_research
+sub_scene: stock_volatility_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- domain_reasoning
+- multi_step_reasoning
+- code_generation
+- output_format
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

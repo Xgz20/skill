@@ -2,6 +2,14 @@
 id: task_log_ssh_failed_logins
 name: SSH Auth Log - Failed Login Analysis
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: log_pattern_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- tool_usage
+- output_format
+- text_generation
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

@@ -2,6 +2,15 @@
 id: task_meeting_gov_controversy
 name: NASA UAP Hearing Controversial Statements
 category: meeting_analysis
+scene: deep_research_report
+sub_scene: meeting_transcript_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- text_generation
+- output_format
+- instruction_following
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

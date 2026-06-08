@@ -2,6 +2,15 @@
 id: task_email_search
 name: Email Search and Summarization
 category: analysis
+scene: data_retrieval_analysis
+sub_scene: email_search_summarization
+difficulty: L3
+capabilities:
+- information_retrieval
+- data_extraction
+- multi_step_reasoning
+- text_generation
+- output_format
 grading_type: hybrid
 timeout_seconds: 240
 grading_weights:

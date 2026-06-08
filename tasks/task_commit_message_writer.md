@@ -2,6 +2,15 @@
 id: task_commit_message_writer
 name: Commit Message Writer
 category: writing
+scene: local_env_scripting
+sub_scene: commit_message_generation
+difficulty: L2
+capabilities:
+- instruction_following
+- data_extraction
+- text_generation
+- output_format
+- multi_step_reasoning
 grading_type: llm_judge
 timeout_seconds: 120
 workspace_files:

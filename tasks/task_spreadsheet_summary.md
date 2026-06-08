@@ -2,6 +2,15 @@
 id: task_spreadsheet_summary
 name: CSV and Excel Data Summarization
 category: analysis
+scene: data_retrieval_analysis
+sub_scene: spreadsheet_data_summary
+difficulty: L3
+capabilities:
+- data_extraction
+- tool_usage
+- output_format
+- text_generation
+- multi_step_reasoning
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

@@ -2,6 +2,14 @@
 id: task_calendar
 name: Calendar Event Creation
 category: productivity
+scene: local_env_scripting
+sub_scene: ics_calendar_event_generation
+difficulty: L1
+capabilities:
+- output_format
+- instruction_following
+- multi_step_reasoning
+- tool_usage
 grading_type: automated
 timeout_seconds: 120
 workspace_files: []

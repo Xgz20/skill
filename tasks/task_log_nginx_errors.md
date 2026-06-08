@@ -2,6 +2,15 @@
 id: task_log_nginx_errors
 name: Nginx Access Log - Error Pattern Analysis
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: log_error_pattern_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- output_format
+- text_generation
+- domain_reasoning
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

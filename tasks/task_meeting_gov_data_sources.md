@@ -2,6 +2,15 @@
 id: task_meeting_gov_data_sources
 name: NASA UAP Hearing Data Sources Extraction
 category: meeting_analysis
+scene: data_retrieval_analysis
+sub_scene: transcript_source_extraction
+difficulty: L2
+capabilities:
+- data_extraction
+- output_format
+- instruction_following
+- hallucination_resistance
+- text_generation
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

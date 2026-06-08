@@ -2,6 +2,15 @@
 id: task_oss_alternative_research
 name: Open Source Alternatives Research
 category: research
+scene: deep_research_report
+sub_scene: oss_alternatives_comparison
+difficulty: L3
+capabilities:
+- information_retrieval
+- tool_usage
+- text_generation
+- output_format
+- multi_step_reasoning
 grading_type: llm_judge
 timeout_seconds: 300
 workspace_files: []

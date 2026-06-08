@@ -2,6 +2,15 @@
 id: task_cve_security_triage
 name: CVE/Security Triage
 category: analysis
+scene: data_retrieval_analysis
+sub_scene: cve_security_triage
+difficulty: L2
+capabilities:
+- domain_reasoning
+- multi_step_reasoning
+- data_extraction
+- output_format
+- instruction_following
 grading_type: hybrid
 timeout_seconds: 300
 grading_weights:

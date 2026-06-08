@@ -2,6 +2,15 @@
 id: task_csv_stations_by_elevation
 name: Idaho Weather Stations Elevation Ranking
 category: csv_analysis
+scene: data_retrieval_analysis
+sub_scene: csv_data_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- output_format
+- text_generation
+- instruction_following
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

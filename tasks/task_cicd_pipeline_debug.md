@@ -2,6 +2,14 @@
 id: task_cicd_pipeline_debug
 name: CI/CD Pipeline Debug
 category: coding
+scene: local_env_scripting
+sub_scene: cicd_workflow_debug
+difficulty: L2
+capabilities:
+- instruction_following
+- code_generation
+- domain_reasoning
+- self_correction
 grading_type: automated
 timeout_seconds: 120
 workspace_files:

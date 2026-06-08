@@ -2,6 +2,15 @@
 id: task_log_mapreduce_resources
 name: MapReduce Log - Resource Utilization Analysis
 category: log_analysis
+scene: data_retrieval_analysis
+sub_scene: log_pattern_extraction
+difficulty: L2
+capabilities:
+- tool_usage
+- data_extraction
+- output_format
+- multi_step_reasoning
+- instruction_following
 grading_type: hybrid
 timeout_seconds: 180
 workspace_files:

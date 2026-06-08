@@ -2,6 +2,15 @@
 id: task_csv_stock_best_worst
 name: Apple Stock 2014 Best and Worst Days
 category: csv_analysis
+scene: data_retrieval_analysis
+sub_scene: csv_data_analysis
+difficulty: L2
+capabilities:
+- data_extraction
+- multi_step_reasoning
+- tool_usage
+- output_format
+- domain_reasoning
 grading_type: hybrid
 timeout_seconds: 180
 grading_weights:

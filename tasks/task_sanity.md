@@ -2,6 +2,12 @@
 id: task_sanity
 name: Sanity Check
 category: productivity
+scene: skill_lifecycle
+sub_scene: agent_sanity_check
+difficulty: L1
+capabilities:
+- instruction_following
+- text_generation
 grading_type: automated
 timeout_seconds: 60
 workspace_files: []

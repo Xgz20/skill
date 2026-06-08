@@ -2,6 +2,14 @@
 id: task_shell_command_generator
 name: Shell Command Generator
 category: coding
+scene: local_env_scripting
+sub_scene: shell_command_generation
+difficulty: L1
+capabilities:
+- code_generation
+- instruction_following
+- output_format
+- tool_usage
 grading_type: automated
 timeout_seconds: 90
 workspace_files: []

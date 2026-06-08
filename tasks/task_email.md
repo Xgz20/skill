@@ -2,6 +2,13 @@
 id: task_email
 name: Professional Email Drafting
 category: writing
+scene: content_creation_multimedia
+sub_scene: professional_email_drafting
+difficulty: L1
+capabilities:
+- instruction_following
+- text_generation
+- output_format
 grading_type: llm_judge
 timeout_seconds: 180
 workspace_files: []

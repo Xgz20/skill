@@ -2,6 +2,15 @@
 id: task_iterative_code_refine
 name: Iterative Code Refinement
 category: coding
+scene: local_env_scripting
+sub_scene: iterative_code_refinement
+difficulty: L2
+capabilities:
+- code_generation
+- context_memory
+- instruction_following
+- self_correction
+- output_format
 grading_type: automated
 timeout_seconds: 300
 multi_session: true
