@@ -44,6 +44,85 @@ def find_result_files(root: Path) -> list[Path]:
     )
 
 
+# 历史评测 JSON 没有 scene/sub_scene/difficulty/capabilities 字段，
+# 需要从当前 tasks/*.md 的 frontmatter 实时补齐。下面是支撑函数。
+_TASKS_DIR_CACHE: list[Path | None] = [None]   # 项目 tasks 目录(单值缓存)
+_FM_CACHE: dict[str, dict] = {}                 # task_id -> frontmatter 缓存
+
+
+def _find_tasks_dir(start: Path | None = None) -> Path | None:
+    """向上查找 PinchBench 项目根的 tasks/ 目录。
+
+    项目根标志：同时存在 scripts/lib_grading.py 与 tasks/ 目录
+    （与 assemble.py 的 find_project_root 一致）。
+
+    Returns:
+        tasks 目录 Path，找不到则 None（聚合时优雅降级）
+    """
+    if _TASKS_DIR_CACHE[0] is not None:
+        return _TASKS_DIR_CACHE[0]
+    cur = (start or Path(__file__).resolve()).resolve()
+    for cand in [cur, *cur.parents]:
+        if (cand / "scripts" / "lib_grading.py").exists() and (cand / "tasks").is_dir():
+            _TASKS_DIR_CACHE[0] = cand / "tasks"
+            return _TASKS_DIR_CACHE[0]
+    return None
+
+
+def _read_task_frontmatter(task_id: str) -> dict:
+    """从 tasks/{task_id}.md 读取 frontmatter (仅 YAML 头)，结果缓存。"""
+    if task_id in _FM_CACHE:
+        return _FM_CACHE[task_id]
+    tasks_dir = _find_tasks_dir()
+    fm: dict = {}
+    if tasks_dir is not None:
+        f = tasks_dir / f"{task_id}.md"
+        if f.exists():
+            try:
+                import yaml
+                text = f.read_text(encoding="utf-8")
+                m = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
+                if m:
+                    parsed = yaml.safe_load(m.group(1))
+                    if isinstance(parsed, dict):
+                        fm = parsed
+            except Exception:
+                fm = {}
+    _FM_CACHE[task_id] = fm
+    return fm
+
+
+_NEW_FIELDS = ("scene", "sub_scene", "difficulty", "capabilities")
+
+
+def enrich_tasks_from_frontmatter(tasks: list[dict]) -> list[dict]:
+    """对历史评测 JSON 兼容：当 task.frontmatter 缺新字段时，从 tasks/*.md 补齐。
+
+    策略：**只补缺失，不覆盖已有**。这样：
+    - 历史 JSON（缺新字段）→ 从 tasks/ 补齐，可参与新维度统计
+    - 新评测 JSON（已含新字段）→ 保持原样，不被当前 tasks/ 改写
+    - tasks/ 找不到对应文件 → 字段保持缺失，聚合时归入 UNKNOWN（不崩溃）
+
+    in-place 修改并返回 tasks。
+    """
+    for task in tasks:
+        fm = task.get("frontmatter")
+        if not isinstance(fm, dict):
+            fm = {}
+            task["frontmatter"] = fm
+        # 全部 4 个新字段都已存在 → 跳过文件读取
+        if all(fm.get(k) for k in _NEW_FIELDS):
+            continue
+        tid = task.get("task_id")
+        if not tid:
+            continue
+        latest_fm = _read_task_frontmatter(tid)
+        for k in _NEW_FIELDS:
+            if not fm.get(k) and latest_fm.get(k):
+                fm[k] = latest_fm[k]
+    return tasks
+
+
 def load_result(path: Path) -> dict:
     with open(path, encoding="utf-8") as f:
         return json.load(f)
@@ -55,6 +134,145 @@ def style_header_row(ws, row: int, ncols: int):
         cell.font = HEADER_FONT_WHITE
         cell.fill = HEADER_FILL
         cell.alignment = CENTER
+
+
+# 难度等级展示顺序（L1→L4，未知值排末尾）
+_DIFFICULTY_ORDER = ["L1", "L2", "L3", "L4"]
+
+
+def compute_difficulty_scores(tasks: list[dict]) -> dict:
+    """按 difficulty 维度聚合得分。
+
+    口径与 benchmark.py 的 _compute_category_scores 一致：
+    每个 task 满分 1.0，得分取 grading.mean，按 difficulty 分组累加。
+    difficulty 从 task 的 frontmatter 读取（结果 JSON 已完整保留 frontmatter）。
+
+    Args:
+        tasks: 结果 JSON 中的 data["tasks"] 列表
+
+    Returns:
+        {difficulty: {score, max_score, pct, task_count}}，按 L1→L4 排序
+    """
+    raw: dict[str, dict] = {}
+    for task in tasks:
+        fm = task.get("frontmatter", {}) or {}
+        difficulty = fm.get("difficulty") or "UNKNOWN"
+        mean_score = float(task.get("grading", {}).get("mean", 0.0))
+        max_score = 1.0  # 与 category 口径一致：每个 task 满分 1.0
+
+        if difficulty not in raw:
+            raw[difficulty] = {"score": 0.0, "max_score": 0.0, "task_count": 0}
+        raw[difficulty]["score"] += mean_score
+        raw[difficulty]["max_score"] += max_score
+        raw[difficulty]["task_count"] += 1
+
+    # 排序：已知等级按 L1→L4，其余（如 UNKNOWN）按字母序追加在后
+    ordered_keys = [d for d in _DIFFICULTY_ORDER if d in raw]
+    ordered_keys += sorted(k for k in raw if k not in ordered_keys)
+
+    result: dict[str, dict] = {}
+    for d in ordered_keys:
+        v = raw[d]
+        pct = (v["score"] / v["max_score"] * 100) if v["max_score"] > 0 else 0
+        result[d] = {
+            "score": round(v["score"], 6),
+            "max_score": round(v["max_score"], 6),
+            "pct": round(pct, 1),
+            "task_count": int(v["task_count"]),
+        }
+    return result
+
+
+# 8 大场景展示顺序
+_SCENE_ORDER = [
+    "finance_investment_research", "deep_research_report", "science_tech_medical_qa",
+    "data_retrieval_analysis", "content_creation_multimedia", "enterprise_product_intel",
+    "skill_lifecycle", "local_env_scripting",
+]
+
+# 20 个标准能力标签（与 agent-capability-dimensions.md 一致）
+_CAPABILITY_TAGS = [
+    "instruction_following", "context_memory", "output_format", "hallucination_resistance",
+    "tool_usage", "multimodal_perception", "data_extraction", "information_retrieval",
+    "multi_step_reasoning", "planning", "domain_reasoning", "code_generation",
+    "service_integration", "text_generation", "self_correction", "uncertainty_handling",
+    "safety_awareness", "concurrency_management", "multi_agent", "adaptive_learning",
+]
+
+
+def compute_scene_scores(tasks: list[dict]) -> dict:
+    """按 scene 维度聚合得分。
+
+    口径与 difficulty/category 一致：每 task 满分 1.0，得分取 grading.mean。
+    scene 从 task 的 frontmatter 读取。
+
+    Returns:
+        {scene: {score, max_score, pct, task_count}}，按 _SCENE_ORDER 排序
+    """
+    raw: dict[str, dict] = {}
+    for task in tasks:
+        fm = task.get("frontmatter", {}) or {}
+        scene = fm.get("scene") or "UNKNOWN"
+        mean_score = float(task.get("grading", {}).get("mean", 0.0))
+        if scene not in raw:
+            raw[scene] = {"score": 0.0, "max_score": 0.0, "task_count": 0}
+        raw[scene]["score"] += mean_score
+        raw[scene]["max_score"] += 1.0
+        raw[scene]["task_count"] += 1
+
+    ordered = [s for s in _SCENE_ORDER if s in raw]
+    ordered += sorted(k for k in raw if k not in ordered)
+    result: dict[str, dict] = {}
+    for s in ordered:
+        v = raw[s]
+        pct = (v["score"] / v["max_score"] * 100) if v["max_score"] > 0 else 0
+        result[s] = {
+            "score": round(v["score"], 6),
+            "max_score": round(v["max_score"], 6),
+            "pct": round(pct, 1),
+            "task_count": int(v["task_count"]),
+        }
+    return result
+
+
+def compute_capability_scores(tasks: list[dict]) -> dict:
+    """按 capabilities 维度聚合得分（多标签：每任务得分贡献到其所有 capabilities）。
+
+    口径：每 task 满分 1.0，得分取 grading.mean。
+    一个 task 标了 N 个 capabilities，则该任务对每个 capability 都贡献 1 次（score=mean，max=1）。
+    所以一个 capability 的 task_count 表示"涉及该能力的任务数"，得分率为这些任务的均值。
+
+    Returns:
+        {capability: {score, max_score, pct, task_count}}，按 20 标准标签顺序排序
+    """
+    raw: dict[str, dict] = {}
+    for task in tasks:
+        fm = task.get("frontmatter", {}) or {}
+        caps = fm.get("capabilities") or []
+        if not isinstance(caps, list):
+            continue
+        mean_score = float(task.get("grading", {}).get("mean", 0.0))
+        for cap in caps:
+            if cap not in raw:
+                raw[cap] = {"score": 0.0, "max_score": 0.0, "task_count": 0}
+            raw[cap]["score"] += mean_score
+            raw[cap]["max_score"] += 1.0
+            raw[cap]["task_count"] += 1
+
+    # 按 20 标准标签顺序输出，未标准标签排末尾
+    ordered = [c for c in _CAPABILITY_TAGS if c in raw]
+    ordered += sorted(k for k in raw if k not in ordered)
+    result: dict[str, dict] = {}
+    for c in ordered:
+        v = raw[c]
+        pct = (v["score"] / v["max_score"] * 100) if v["max_score"] > 0 else 0
+        result[c] = {
+            "score": round(v["score"], 6),
+            "max_score": round(v["max_score"], 6),
+            "pct": round(pct, 1),
+            "task_count": int(v["task_count"]),
+        }
+    return result
 
 
 # --------------------------------------------------------------------------- #
@@ -89,12 +307,76 @@ def write_overview_sheet(wb: openpyxl.Workbook, data: dict):
     for col in range(1, 6):
         ws.column_dimensions[get_column_letter(col)].width = 16
 
+    # 难度等级分布（从 tasks 的 frontmatter 聚合，与 category 同口径）
+    difficulty_scores = compute_difficulty_scores(data.get("tasks", []))
+    if difficulty_scores:
+        ws.append([])
+        title_row = ws.max_row + 1
+        ws.append(["难度等级维度"])
+        ws.cell(row=title_row, column=1).font = Font(bold=True)
+
+        diff_header_row = ws.max_row + 1
+        ws.append(["难度", "得分", "满分", "得分率", "任务数"])
+        style_header_row(ws, diff_header_row, 5)
+
+        for level, scores in difficulty_scores.items():
+            ws.append([
+                level,
+                round(scores["score"], 3),
+                round(scores["max_score"], 1),
+                f"{scores['pct']:.1f}%",
+                scores["task_count"],
+            ])
+
+    # 场景维度分布
+    scene_scores = compute_scene_scores(data.get("tasks", []))
+    if scene_scores:
+        ws.append([])
+        title_row = ws.max_row + 1
+        ws.append(["场景维度"])
+        ws.cell(row=title_row, column=1).font = Font(bold=True)
+
+        scene_header_row = ws.max_row + 1
+        ws.append(["场景", "得分", "满分", "得分率", "任务数"])
+        style_header_row(ws, scene_header_row, 5)
+
+        for scene, scores in scene_scores.items():
+            ws.append([
+                scene,
+                round(scores["score"], 3),
+                round(scores["max_score"], 1),
+                f"{scores['pct']:.1f}%",
+                scores["task_count"],
+            ])
+
+    # 能力维度分布（多标签：每任务贡献到所有 capabilities）
+    cap_scores = compute_capability_scores(data.get("tasks", []))
+    if cap_scores:
+        ws.append([])
+        title_row = ws.max_row + 1
+        ws.append(["能力维度（capabilities，多标签聚合）"])
+        ws.cell(row=title_row, column=1).font = Font(bold=True)
+
+        cap_header_row = ws.max_row + 1
+        ws.append(["能力维度", "得分", "满分", "得分率", "涉及任务数"])
+        style_header_row(ws, cap_header_row, 5)
+
+        for cap, scores in cap_scores.items():
+            ws.append([
+                cap,
+                round(scores["score"], 3),
+                round(scores["max_score"], 1),
+                f"{scores['pct']:.1f}%",
+                scores["task_count"],
+            ])
+
 
 def write_detail_sheet(wb: openpyxl.Workbook, data: dict):
     ws = wb.create_sheet("明细")
 
     headers = [
-        "category", "task", "score",
+        "category", "scene", "sub_scene", "difficulty", "task", "score",
+        "capabilities",
         "input_tokens", "output_tokens",
         "cache_read_tokens", "cache_write_tokens",
         "total_tokens", "request_count",
@@ -104,10 +386,17 @@ def write_detail_sheet(wb: openpyxl.Workbook, data: dict):
 
     for task in data["tasks"]:
         usage = task.get("usage", {})
+        fm = task.get("frontmatter", {}) or {}
+        caps = fm.get("capabilities") or []
+        caps_str = "\n".join(caps) if isinstance(caps, list) else str(caps)
         ws.append([
             task.get("category", ""),
+            fm.get("scene", ""),
+            fm.get("sub_scene", ""),
+            fm.get("difficulty", ""),
             task.get("task_id", ""),
             task.get("grading", {}).get("mean", 0),
+            caps_str,
             usage.get("input_tokens", 0),
             usage.get("output_tokens", 0),
             usage.get("cache_read_tokens", 0),
@@ -118,9 +407,15 @@ def write_detail_sheet(wb: openpyxl.Workbook, data: dict):
 
     for col in range(1, len(headers) + 1):
         ws.column_dimensions[get_column_letter(col)].width = 18
+    # capabilities 列加宽并启用换行
+    ws.column_dimensions[get_column_letter(7)].width = 24
+    for row_idx in range(2, ws.max_row + 1):
+        ws.cell(row=row_idx, column=7).alignment = Alignment(wrap_text=True, vertical="top")
 
 
 def build_single_report(data: dict) -> openpyxl.Workbook:
+    # 历史 JSON 缺新字段 → 从当前 tasks/*.md 补齐 (不覆盖已有)
+    enrich_tasks_from_frontmatter(data.get("tasks", []))
     wb = openpyxl.Workbook()
     write_overview_sheet(wb, data)
     write_detail_sheet(wb, data)
@@ -144,6 +439,8 @@ def write_compare_sheet(wb, results: list[tuple[Path, Path, dict]], categories: 
 
     headers = ["文件", "模型", "suite", "run_id", "总分率", "总分/满分", "任务数"]
     headers += categories
+    headers += [f"难度{d}" for d in _DIFFICULTY_ORDER]
+    headers += [f"场景:{s}" for s in _SCENE_ORDER]
     headers += ["total_tokens", "total_requests", "总耗时(s)", "时间"]
     ws.append(headers)
     style_header_row(ws, 1, len(headers))
@@ -171,6 +468,20 @@ def write_compare_sheet(wb, results: list[tuple[Path, Path, dict]], categories: 
                 row.append(f"{cat_scores[cat]['pct']:.1f}%")
             else:
                 row.append("-")
+        # 难度维度得分率（从该结果文件的 tasks 聚合）
+        diff_scores = compute_difficulty_scores(data.get("tasks", []))
+        for level in _DIFFICULTY_ORDER:
+            if level in diff_scores:
+                row.append(f"{diff_scores[level]['pct']:.1f}%")
+            else:
+                row.append("-")
+        # 场景维度得分率
+        scene_scores = compute_scene_scores(data.get("tasks", []))
+        for scene in _SCENE_ORDER:
+            if scene in scene_scores:
+                row.append(f"{scene_scores[scene]['pct']:.1f}%")
+            else:
+                row.append("-")
         row += [
             eff.get("total_tokens", ""),
             eff.get("total_requests", ""),
@@ -186,12 +497,47 @@ def write_compare_sheet(wb, results: list[tuple[Path, Path, dict]], categories: 
     ws.freeze_panes = "B2"
 
 
+def write_capability_compare_sheet(wb, results: list[tuple[Path, Path, dict]]):
+    """能力维度对比 Sheet：每个模型一行，列出 20 个能力维度的得分率。"""
+    ws = wb.create_sheet("能力维度对比")
+
+    headers = ["文件", "模型", "suite", "run_id"]
+    headers += _CAPABILITY_TAGS
+    ws.append(headers)
+    style_header_row(ws, 1, len(headers))
+
+    for rel_path, _abs_path, data in results:
+        cap_scores = compute_capability_scores(data.get("tasks", []))
+        row = [
+            str(rel_path),
+            data.get("model", ""),
+            data.get("suite", ""),
+            data.get("run_id", ""),
+        ]
+        for cap in _CAPABILITY_TAGS:
+            if cap in cap_scores:
+                # 显示 得分率 (涉及任务数)
+                pct = cap_scores[cap]["pct"]
+                cnt = cap_scores[cap]["task_count"]
+                row.append(f"{pct:.1f}% ({cnt})")
+            else:
+                row.append("-")
+        ws.append(row)
+
+    ws.column_dimensions["A"].width = 50
+    ws.column_dimensions["B"].width = 20
+    for col in range(3, len(headers) + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 18
+    ws.freeze_panes = "E2"
+
+
 def write_all_detail_sheet(wb, results: list[tuple[Path, Path, dict]]):
     """全量明细 Sheet：所有文件的任务展平，前置 model/run_id/文件 列。"""
     ws = wb.create_sheet("明细")
 
     headers = [
-        "model", "run_id", "suite", "category", "task", "score",
+        "model", "run_id", "suite", "category", "scene", "sub_scene",
+        "difficulty", "task", "score", "capabilities",
         "input_tokens", "output_tokens",
         "cache_read_tokens", "cache_write_tokens",
         "total_tokens", "request_count", "文件",
@@ -205,13 +551,20 @@ def write_all_detail_sheet(wb, results: list[tuple[Path, Path, dict]]):
         suite = data.get("suite", "")
         for task in data.get("tasks", []):
             usage = task.get("usage", {})
+            fm = task.get("frontmatter", {}) or {}
+            caps = fm.get("capabilities") or []
+            caps_str = "\n".join(caps) if isinstance(caps, list) else str(caps)
             ws.append([
                 model,
                 run_id,
                 suite,
                 task.get("category", ""),
+                fm.get("scene", ""),
+                fm.get("sub_scene", ""),
+                fm.get("difficulty", ""),
                 task.get("task_id", ""),
                 task.get("grading", {}).get("mean", 0),
+                caps_str,
                 usage.get("input_tokens", 0),
                 usage.get("output_tokens", 0),
                 usage.get("cache_read_tokens", 0),
@@ -223,11 +576,20 @@ def write_all_detail_sheet(wb, results: list[tuple[Path, Path, dict]]):
 
     for col in range(1, len(headers) + 1):
         ws.column_dimensions[get_column_letter(col)].width = 16
+    # capabilities 列加宽并启用换行
+    cap_col = headers.index("capabilities") + 1
+    ws.column_dimensions[get_column_letter(cap_col)].width = 24
+    for row_idx in range(2, ws.max_row + 1):
+        ws.cell(row=row_idx, column=cap_col).alignment = Alignment(wrap_text=True, vertical="top")
     ws.column_dimensions[get_column_letter(len(headers))].width = 50
     ws.freeze_panes = "A2"
 
 
 def build_dir_report(results: list[tuple[Path, Path, dict]]) -> openpyxl.Workbook:
+    # 历史 JSON 缺新字段 → 从当前 tasks/*.md 补齐 (不覆盖已有, 全局缓存仅读一次)
+    for _rel, _abs, data in results:
+        enrich_tasks_from_frontmatter(data.get("tasks", []))
+
     # 收集所有出现过的类别，保持稳定顺序（按首次出现）
     categories: list[str] = []
     for _rel, _abs, data in results:
@@ -237,6 +599,7 @@ def build_dir_report(results: list[tuple[Path, Path, dict]]) -> openpyxl.Workboo
 
     wb = openpyxl.Workbook()
     write_compare_sheet(wb, results, categories)
+    write_capability_compare_sheet(wb, results)
     write_all_detail_sheet(wb, results)
     return wb
 

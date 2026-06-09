@@ -31,6 +31,43 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# 8 大场景的中文名（来源：skills/pinchbench-case-generator/SKILL.md）
+SCENE_ZH = {
+    "finance_investment_research": "金融投研与企业价值评估",
+    "deep_research_report": "深度搜索与专题研究报告",
+    "science_tech_medical_qa": "科学技术、医学与计算问答",
+    "data_retrieval_analysis": "数据库检索、表格整理与数据分析",
+    "content_creation_multimedia": "内容创作、PPT、网页与多媒体生成",
+    "enterprise_product_intel": "企业产品情报与业务信息助手",
+    "skill_lifecycle": "Skill发现、创建、安装与调用",
+    "local_env_scripting": "本地环境、命令执行与脚本任务",
+}
+
+# 20 个标准能力标签的中文名（来源：docs/agent-capability-dimensions.md）
+CAPABILITY_ZH = {
+    "instruction_following": "指令遵循与约束理解",
+    "context_memory": "上下文记忆与状态管理",
+    "output_format": "输出格式适配",
+    "hallucination_resistance": "幻觉抑制",
+    "tool_usage": "工具调用",
+    "multimodal_perception": "多模态感知",
+    "data_extraction": "数据提取与处理",
+    "information_retrieval": "信息检索与综合",
+    "multi_step_reasoning": "多步推理",
+    "planning": "规划与任务分解",
+    "domain_reasoning": "领域推理",
+    "code_generation": "代码生成与理解",
+    "service_integration": "外部服务集成",
+    "text_generation": "自然语言生成",
+    "self_correction": "自我纠错与反思",
+    "uncertainty_handling": "不确定性处理",
+    "safety_awareness": "安全与权限意识",
+    "concurrency_management": "并发与优先级管理",
+    "multi_agent": "多Agent协作",
+    "adaptive_learning": "自适应学习",
+}
+
+
 def format_workspace_files(workspace_files: list) -> str:
     """格式化工作区文件列表为可读字符串。"""
     if not workspace_files:
@@ -48,6 +85,49 @@ def format_workspace_files(workspace_files: list) -> str:
             files.append(item)
 
     return "\n".join(files) if files else "无"
+
+
+def needs_prerequisite_assets(workspace_files: list) -> str:
+    """判断任务是否依赖 assets 目录下的前置数据文件。
+
+    workspace_files 有三种形态：
+    - source 型（{source, dest}）：从 assets/ 复制外部文件 → 依赖前置数据
+    - inline 型（{path, content}）：内容内嵌在用例里 → 不依赖外部文件
+    - 空列表：无任何工作区文件 → 不依赖
+
+    只要含任一 source 型条目，即判定为依赖 assets 前置数据。
+    """
+    if not workspace_files:
+        return "否"
+    for item in workspace_files:
+        if isinstance(item, dict) and "source" in item:
+            return "是"
+    return "否"
+
+
+def format_capabilities(capabilities) -> str:
+    """格式化能力维度列表为换行字符串。"""
+    if not capabilities:
+        return "无"
+    if isinstance(capabilities, list):
+        return "\n".join(str(c) for c in capabilities)
+    return str(capabilities)
+
+
+def format_scene_zh(scene: str) -> str:
+    """场景英文标签 → 中文名。未知 scene 原样返回（兼容个别非标准值）。"""
+    if not scene:
+        return ""
+    return SCENE_ZH.get(scene, scene)
+
+
+def format_capabilities_zh(capabilities) -> str:
+    """能力维度列表 → 中文名换行字符串。未知标签原样返回。"""
+    if not capabilities:
+        return "无"
+    if isinstance(capabilities, list):
+        return "\n".join(CAPABILITY_ZH.get(c, c) for c in capabilities)
+    return str(capabilities)
 
 
 def format_grading_criteria(criteria: list) -> str:
@@ -77,8 +157,9 @@ def write_tasks_sheet(wb: openpyxl.Workbook, tasks: list, core_task_ids: set):
 
     # 定义表头
     headers = [
-        "序号", "分类", "任务ID", "任务名称", "评分类型",
-        "超时(秒)", "核心任务", "多轮对话", "输入文件",
+        "序号", "分类", "场景", "场景(中文)", "子场景", "任务ID", "任务名称",
+        "难度", "评分类型", "超时(秒)", "核心任务", "多轮对话",
+        "依赖前置数据", "能力维度", "能力维度(中文)", "输入文件",
         "任务提示", "预期行为", "评分标准"
     ]
 
@@ -95,16 +176,25 @@ def write_tasks_sheet(wb: openpyxl.Workbook, tasks: list, core_task_ids: set):
     for idx, task in enumerate(tasks, 1):
         is_core = "是" if task.task_id in core_task_ids else "否"
         is_multi_session = "是" if task.frontmatter.get("multi_session", False) else "否"
+        scene = task.frontmatter.get("scene", "")
+        capabilities = task.frontmatter.get("capabilities")
 
         row_data = [
             idx,
             task.category,
+            scene,
+            format_scene_zh(scene),
+            task.frontmatter.get("sub_scene", ""),
             task.task_id,
             task.name,
+            task.frontmatter.get("difficulty", ""),
             task.grading_type,
             task.timeout_seconds,
             is_core,
             is_multi_session,
+            needs_prerequisite_assets(task.workspace_files),
+            format_capabilities(capabilities),
+            format_capabilities_zh(capabilities),
             format_workspace_files(task.workspace_files),
             truncate_text(task.prompt, 1000),
             truncate_text(task.expected_behavior, 1000),
@@ -115,24 +205,32 @@ def write_tasks_sheet(wb: openpyxl.Workbook, tasks: list, core_task_ids: set):
 
         # 设置文本换行（对于长文本列）
         row_num = idx + 1
-        for col_idx in [9, 10, 11, 12]:  # 输入文件、提示、预期行为、评分标准
+        # 能力维度(14)、能力维度中文(15)、输入文件(16)、提示(17)、预期行为(18)、评分标准(19)
+        for col_idx in [15, 16, 17, 18, 19]:
             cell = ws.cell(row=row_num, column=col_idx)
             cell.alignment = Alignment(wrap_text=True, vertical="top")
 
     # 设置列宽
     column_widths = {
-        1: 6,   # 序号
-        2: 15,  # 分类
-        3: 35,  # 任务ID
-        4: 30,  # 任务名称
-        5: 12,  # 评分类型
-        6: 10,  # 超时
-        7: 10,  # 核心任务
-        8: 10,  # 多轮对话
-        9: 25,  # 输入文件
-        10: 50, # 任务提示
-        11: 50, # 预期行为
-        12: 50, # 评分标准
+        1: 6,    # 序号
+        2: 15,   # 分类
+        3: 24,   # 场景
+        4: 28,   # 场景(中文)
+        5: 26,   # 子场景
+        6: 35,   # 任务ID
+        7: 30,   # 任务名称
+        8: 8,    # 难度
+        9: 12,   # 评分类型
+        10: 10,  # 超时
+        11: 10,  # 核心任务
+        12: 10,  # 多轮对话
+        13: 12,  # 依赖前置数据
+        14: 22,  # 能力维度
+        15: 24,  # 能力维度(中文)
+        16: 25,  # 输入文件
+        17: 50,  # 任务提示
+        18: 50,  # 预期行为
+        19: 50,  # 评分标准
     }
 
     for col_idx, width in column_widths.items():
@@ -227,8 +325,78 @@ def write_statistics_sheet(wb: openpyxl.Workbook, tasks: list, categories: list)
             percentage = f"{count / len(tasks) * 100:.1f}%"
             ws.append([category, count, percentage])
 
+    ws.append([])
+
+    # 4. 按难度等级统计
+    ws.append(["按难度等级统计"])
+    ws[f"A{ws.max_row}"].font = title_font
+    ws.append([])
+
+    ws.append(["难度", "任务数", "占比"])
+    row_num = ws.max_row
+    for col_idx in range(1, 4):
+        cell = ws.cell(row=row_num, column=col_idx)
+        cell.font = header_font
+        cell.fill = header_fill
+
+    difficulty_counts = {}
+    for task in tasks:
+        d = task.frontmatter.get("difficulty", "未标注")
+        difficulty_counts[d] = difficulty_counts.get(d, 0) + 1
+    # 按 L1-L4 顺序输出，其余排末尾
+    diff_order = ["L1", "L2", "L3", "L4"]
+    ordered = [d for d in diff_order if d in difficulty_counts]
+    ordered += sorted(d for d in difficulty_counts if d not in diff_order)
+    for d in ordered:
+        count = difficulty_counts[d]
+        percentage = f"{count / len(tasks) * 100:.1f}%"
+        ws.append([d, count, percentage])
+
+    ws.append([])
+
+    # 5. 按场景统计
+    ws.append(["按场景统计"])
+    ws[f"A{ws.max_row}"].font = title_font
+    ws.append([])
+
+    ws.append(["场景", "任务数", "占比"])
+    row_num = ws.max_row
+    for col_idx in range(1, 4):
+        cell = ws.cell(row=row_num, column=col_idx)
+        cell.font = header_font
+        cell.fill = header_fill
+
+    scene_counts = {}
+    for task in tasks:
+        s = task.frontmatter.get("scene", "未标注")
+        scene_counts[s] = scene_counts.get(s, 0) + 1
+    for scene, count in sorted(scene_counts.items(), key=lambda x: -x[1]):
+        percentage = f"{count / len(tasks) * 100:.1f}%"
+        ws.append([scene, count, percentage])
+
+    ws.append([])
+
+    # 6. 前置数据依赖统计
+    ws.append(["前置数据依赖统计"])
+    ws[f"A{ws.max_row}"].font = title_font
+    ws.append([])
+
+    ws.append(["是否依赖assets前置数据", "任务数", "占比"])
+    row_num = ws.max_row
+    for col_idx in range(1, 4):
+        cell = ws.cell(row=row_num, column=col_idx)
+        cell.font = header_font
+        cell.fill = header_fill
+
+    prereq_counts = {"是": 0, "否": 0}
+    for task in tasks:
+        prereq_counts[needs_prerequisite_assets(task.workspace_files)] += 1
+    for label, count in [("是", prereq_counts["是"]), ("否", prereq_counts["否"])]:
+        percentage = f"{count / len(tasks) * 100:.1f}%"
+        ws.append([label, count, percentage])
+
     # 设置列宽
-    ws.column_dimensions["A"].width = 20
+    ws.column_dimensions["A"].width = 28
     ws.column_dimensions["B"].width = 12
     ws.column_dimensions["C"].width = 12
 
