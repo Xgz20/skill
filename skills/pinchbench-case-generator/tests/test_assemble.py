@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from assemble import assign_next_sequence, render_frontmatter, assemble_case_file
 

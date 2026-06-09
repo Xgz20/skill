@@ -83,12 +83,12 @@ L1-L4 四级体系，由步数和工具数双维度量化：
 
 - **生成引擎**：workflows/case-generation-pipeline.js（6阶段workflow）
 - **领域知识**：domains/目录下8个场景定义文件
-- **序号分配**：lib/assemble.py扫描现有文件自动分配
-- **格式组装**：lib/assemble.py渲染YAML frontmatter并组装md
-- **Python验证**：lib/validate_python.py 确定性语法验证器
+- **序号分配**：scripts/assemble.py扫描现有文件自动分配
+- **格式组装**：scripts/assemble.py渲染YAML frontmatter并组装md
+- **Python验证**：scripts/validate_python.py 确定性语法验证器
   （用 py_compile 在系统临时目录验证，with 退出时自动清理，绝不污染项目根）
   workflow 子 Agent 通过 stdin 管道调用此脚本，不再自行创建临时文件
-- **组装入口**：`python lib/assemble.py <workflow_result.json>`
+- **组装入口**：`python scripts/assemble.py <workflow_result.json>`
   自动定位项目根（向上查找 scripts/lib_grading.py + tasks/ 标志），
   统一输出到项目根 output/generated_cases/，并在质检发现严重问题时
   生成同名 *_REPORT.md 质量报告便于后续分析优化。

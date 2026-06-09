@@ -218,7 +218,7 @@ const gradingLogic = await pipeline(
 【重要】：不要自己创建任何文件！调用验证脚本完成检查：
 
 \`\`\`bash
-cat <<'EOCODE' | python lib/validate_python.py
+cat <<'EOCODE' | python scripts/validate_python.py
 ${result.code}
 EOCODE
 \`\`\`
@@ -258,7 +258,7 @@ const critics = [
 【重要】：不要创建任何文件！调用验证脚本：
 
 \`\`\`bash
-cat <<'EOCODE' | python lib/validate_python.py
+cat <<'EOCODE' | python scripts/validate_python.py
 ${automatedChecks.code}
 EOCODE
 \`\`\`
