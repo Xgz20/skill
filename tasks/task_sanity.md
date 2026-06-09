@@ -2,7 +2,7 @@
 id: task_sanity
 name: Sanity Check
 category: productivity
-scene: skill_lifecycle
+scene: local_env_scripting
 sub_scene: agent_sanity_check
 difficulty: L1
 capabilities:
