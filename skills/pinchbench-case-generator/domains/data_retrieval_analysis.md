@@ -14,11 +14,14 @@
 
 ## 核心能力点 (capabilities)
 
-- `data_parsing` - 数据解析
-- `statistical_computation` - 统计计算
-- `data_filtering` - 数据筛选
-- `tabular_output` - 表格输出
-- `aggregation` - 聚合
+> 以下为本领域常见涉及的 Agent 能力，均来自 `references/agent-capability-dimensions.md` 标准清单。
+> 生成用例时从中选取该任务真正考察的 3-5 个（也可按需选用清单内其他标签）。
+
+- `data_extraction` - 数据提取与处理（解析、筛选、清洗、聚合）
+- `multi_step_reasoning` - 多步推理（统计计算、分组聚合的逻辑链）
+- `output_format` - 输出格式适配（CSV/Markdown 表格/JSON 规范输出）
+- `code_generation` - 代码生成与理解（编写数据处理脚本/SQL 时）
+- `tool_usage` - 工具调用（读取数据文件、执行计算工具）
 
 ## 评测重点
 

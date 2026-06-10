@@ -14,11 +14,14 @@
 
 ## 核心能力点 (capabilities)
 
-- `command_generation` - 命令生成
-- `script_writing` - 脚本编写
-- `file_manipulation` - 文件操作
-- `error_handling` - 错误处理
-- `tool_use` - 工具调用
+> 以下为本领域常见涉及的 Agent 能力，均来自 `references/agent-capability-dimensions.md` 标准清单。
+> 生成用例时从中选取该任务真正考察的 3-5 个（也可按需选用清单内其他标签）。
+
+- `code_generation` - 代码生成与理解（Shell/Python 脚本、命令编写）
+- `tool_usage` - 工具调用（执行命令、读写文件、调用系统工具）
+- `planning` - 规划与任务分解（多步部署/配置流程编排）
+- `self_correction` - 自我纠错与反思（命令报错后排查与重试）
+- `safety_awareness` - 安全与权限意识（危险操作识别、权限边界）
 
 ## 评测重点
 

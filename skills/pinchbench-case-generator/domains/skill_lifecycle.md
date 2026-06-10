@@ -14,11 +14,14 @@ Skill 发现、创建、安装与调用场景涵盖Skill发现、安装、调用
 
 ## 核心能力点 (capabilities)
 
-- `tool_use` - 工具调用
-- `instruction_following` - 指令遵循
-- `multi_step_workflow` - 多步工作流
-- `error_handling` - 错误处理
-- `skill_comprehension` - Skill理解
+> 以下为本领域常见涉及的 Agent 能力，均来自 `references/agent-capability-dimensions.md` 标准清单。
+> 生成用例时从中选取该任务真正考察的 3-5 个（也可按需选用清单内其他标签）。
+
+- `tool_usage` - 工具调用（Skill 发现、安装、调用等动作的正确执行）
+- `instruction_following` - 指令遵循与约束理解（按规范完成 Skill 操作）
+- `planning` - 规划与任务分解（多步 Skill 工作流编排）
+- `self_correction` - 自我纠错与反思（操作失败后排查与恢复）
+- `code_generation` - 代码生成与理解（创建 Skill 时编写脚本/配置）
 
 ## 评测重点
 

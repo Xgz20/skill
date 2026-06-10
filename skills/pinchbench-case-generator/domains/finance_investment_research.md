@@ -14,13 +14,15 @@
 
 ## 核心能力点 (capabilities)
 
-- `realtime_data_retrieval` - 实时数据获取
-- `financial_data_parsing` - 财务数据解析
-- `numeric_computation` - 数值计算
-- `tool_use` - 工具调用（web search, API）
-- `structured_output` - 结构化输出（表格、图表）
-- `time_sensitivity` - 时效性要求
-- `data_accuracy` - 数据准确性
+> 以下为本领域常见涉及的 Agent 能力，均来自 `references/agent-capability-dimensions.md` 标准清单。
+> 生成用例时从中选取该任务真正考察的 3-5 个（也可按需选用清单内其他标签）。
+
+- `information_retrieval` - 信息检索与综合（实时行情/财报数据获取，含时效性判断）
+- `data_extraction` - 数据提取与处理（财务数据解析、指标提取）
+- `multi_step_reasoning` - 多步推理（估值计算、趋势分析的数值逻辑链）
+- `domain_reasoning` - 领域推理（金融术语、估值方法、风险逻辑的专业运用）
+- `hallucination_resistance` - 幻觉抑制（数据准确、可溯源、拒绝编造行情）
+- `output_format` - 输出格式适配（表格、结构化报告）
 
 ## 评测重点
 

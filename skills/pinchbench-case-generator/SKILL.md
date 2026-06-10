@@ -20,15 +20,37 @@ metadata:
 
 1. **语言识别**：自动检测Query语言（中文/英文）
 2. **场景识别**：识别业务场景（finance/research/coding等）
-3. **Workflow生成**：6阶段多Agent协作生成用例
+3. **加载能力清单**：读取 Skill 内的 `references/agent-capability-dimensions.md`，从「标签速查表」提取全部 Agent 能力标签（详见下方「Agent 能力清单」章节）
+4. **Workflow生成**：6阶段多Agent协作生成用例（将能力清单作为 `allowedCapabilities` 注入）
    - 需求分析
    - 多方案生成（judge-panel模式）
    - 评分择优
    - 评分逻辑生成
    - 对抗式质检
    - 最终组装
-4. **序号分配**：自动分配task_NNNN前缀
-5. **文件输出**：写入output/generated_cases/
+5. **序号分配**：自动分配task_NNNN前缀
+6. **文件输出**：写入output/generated_cases/
+
+## Agent 能力清单（capabilities 的唯一来源）
+
+评测用例 frontmatter 中的 `capabilities` 字段**必须**来源于 Skill 内的
+`references/agent-capability-dimensions.md`，这是 Agent 能力的**单一真实源**。
+新增/调整能力只需更新该 md 文件，无需改动 workflow 脚本。
+（该文件随 Skill 一起分发，自包含、可团队共享，不依赖外部 docs/ 个人文件。）
+
+**调用 workflow 前，务必执行以下步骤：**
+
+1. 读取 Skill 目录下的 `references/agent-capability-dimensions.md`
+   （相对 SKILL.md 所在的 Skill 根目录定位，无需外部依赖）。
+2. 定位「## 标签速查表」章节，逐行解析表格，提取每行第一列 backtick 包裹的 snake_case 标签，
+   以及第二列中文名，构造：
+   - `allowedCapabilities`: 标签字符串数组，如 `["instruction_following", "tool_usage", ...]`
+   - `capabilityNames`: 标签→中文名映射，如 `{"instruction_following": "指令遵循与约束理解", ...}`
+3. 调用 workflow 时，将上述两个值连同 `query`/`language`/`domainContext` 一并作为 `args` 传入。
+
+> **接口约定**：`references/agent-capability-dimensions.md` 的「标签速查表」表格是事实上的能力接口，
+> 格式为 `| \`tag\` | 中文名 | 层级 |`。修改该文档时请保持此表格结构，
+> 否则能力清单提取会失败（workflow 脚本内置防御：收到少于 10 个标签会直接报错）。
 
 ## 输出格式
 
@@ -82,6 +104,7 @@ L1-L4 四级体系，由步数和工具数双维度量化：
 ## 架构组成
 
 - **生成引擎**：workflows/case-generation-pipeline.js（6阶段workflow）
+- **能力清单**：references/agent-capability-dimensions.md（Agent 能力单一真实源，capabilities 字段唯一来源，随 Skill 自包含分发）
 - **领域知识**：domains/目录下8个场景定义文件
 - **序号分配**：scripts/assemble.py扫描现有文件自动分配
 - **格式组装**：scripts/assemble.py渲染YAML frontmatter并组装md

@@ -14,11 +14,14 @@
 
 ## 核心能力点 (capabilities)
 
-- `multi_source_research` - 多源研究
-- `information_synthesis` - 信息综合
-- `source_verification` - 来源验证
-- `structured_report` - 结构化报告
-- `citation_management` - 引用管理
+> 以下为本领域常见涉及的 Agent 能力，均来自 `references/agent-capability-dimensions.md` 标准清单。
+> 生成用例时从中选取该任务真正考察的 3-5 个（也可按需选用清单内其他标签）。
+
+- `information_retrieval` - 信息检索与综合（多源研究、来源验证、信息整合）
+- `text_generation` - 自然语言生成（结构化研究报告）
+- `multi_step_reasoning` - 多步推理（趋势提炼、因果分析）
+- `hallucination_resistance` - 幻觉抑制（来源标注、拒绝编造引用）
+- `output_format` - 输出格式适配（报告结构、引用格式规范）
 
 ## 评测重点
 

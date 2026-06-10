@@ -14,11 +14,14 @@
 
 ## 核心能力点 (capabilities)
 
-- `information_retrieval` - 信息检索
-- `competitive_analysis` - 竞争分析
-- `data_synthesis` - 数据综合
-- `tool_use` - 工具调用
-- `structured_output` - 结构化输出
+> 以下为本领域常见涉及的 Agent 能力，均来自 `references/agent-capability-dimensions.md` 标准清单。
+> 生成用例时从中选取该任务真正考察的 3-5 个（也可按需选用清单内其他标签）。
+
+- `information_retrieval` - 信息检索与综合（产品/竞品/定价信息收集与甄别）
+- `data_extraction` - 数据提取与处理（从网页/文档提取规格、价格等结构化信息）
+- `multi_step_reasoning` - 多步推理（竞争分析、市场定位判断）
+- `hallucination_resistance` - 幻觉抑制（实体准确、价格可溯源、防张冠李戴）
+- `output_format` - 输出格式适配（对比表格、结构化输出）
 
 ## 评测重点
 

@@ -14,11 +14,14 @@
 
 ## 核心能力点 (capabilities)
 
-- `content_generation` - 内容生成
-- `format_compliance` - 格式遵循
-- `creativity` - 创意
-- `tone_adaptation` - 语气适配
-- `structure_organization` - 结构组织
+> 以下为本领域常见涉及的 Agent 能力，均来自 `references/agent-capability-dimensions.md` 标准清单。
+> 生成用例时从中选取该任务真正考察的 3-5 个（也可按需选用清单内其他标签）。
+
+- `text_generation` - 自然语言生成（文案、文章、脚本等内容创作）
+- `output_format` - 输出格式适配（Markdown/HTML/PPT 等格式遵循）
+- `instruction_following` - 指令遵循与约束理解（主题、字数、风格约束）
+- `multimodal_perception` - 多模态感知（涉及图片/图表素材时）
+- `planning` - 规划与任务分解（长篇内容的结构组织）
 
 ## 评测重点
 

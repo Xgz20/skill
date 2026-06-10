@@ -11,10 +11,31 @@ export const meta = {
   ]
 }
 
-// args: { query: string, language: 'zh'|'en', domainContext: string }
+// args: {
+//   query: string, language: 'zh'|'en', domainContext: string,
+//   allowedCapabilities: string[],          // 来源于 references/agent-capability-dimensions.md 速查表，由 Skill 主流程读取后注入
+//   capabilityNames?: { [tag: string]: string }  // 标签->中文名映射（可选，用于提升模型选择准确度）
+// }
 
 // ============ 阶段 1: 需求分析 ============
 phase('需求分析')
+
+// ===== Agent 能力清单（单一真实源：references/agent-capability-dimensions.md）=====
+// 脚本不内置能力枚举，改由 Skill 主流程读取 md 速查表后通过 args 注入，
+// 这样新增能力只需更新 md 文件，无需改动本脚本。
+const ALLOWED_CAPABILITIES = Array.isArray(args.allowedCapabilities) ? args.allowedCapabilities : []
+if (ALLOWED_CAPABILITIES.length < 10) {
+  throw new Error(
+    `Agent 能力清单异常：仅收到 ${ALLOWED_CAPABILITIES.length} 个标签。` +
+    `应由 Skill 主流程从 references/agent-capability-dimensions.md 的「标签速查表」提取全部标签（当前应为 20 个）` +
+    `并通过 args.allowedCapabilities 注入。请检查 SKILL.md 调用流程。`
+  )
+}
+const CAP_NAMES = (args.capabilityNames && typeof args.capabilityNames === 'object') ? args.capabilityNames : {}
+// 用于 prompt 展示的「标签(中文名)」清单
+const CAP_LIST_TEXT = ALLOWED_CAPABILITIES
+  .map(c => (CAP_NAMES[c] ? `${c}(${CAP_NAMES[c]})` : c))
+  .join(', ')
 
 const SCENE_OPTIONS = [
   'finance_investment_research', 'deep_research_report', 'science_tech_medical_qa',
@@ -42,7 +63,17 @@ Query: ${args.query}
    - automated: 输出确定性强
    - llm_judge: 输出开放式
    - hybrid: 结合两者（推荐）
-5. 提取capabilities（核心能力点，3-5个，用英文snake_case）
+5. 提取capabilities（Agent核心能力，3-5个）：
+   【必须】只能从以下 Agent 能力清单中选择，不得自创标签：
+   ${CAP_LIST_TEXT}
+
+   关键区分——这里要的是 Agent 通用能力，不是业务场景特征：
+   - ✅ Agent能力：跨任务复用的底层能力（如 information_retrieval、data_extraction、tool_usage）
+   - ❌ 业务特征：特定任务的领域描述（如 multi_market_analysis、stock_data_collection）——禁止出现
+   示例：Query"生成全球股市报告"
+   - 正确：[information_retrieval, data_extraction, output_format, text_generation, hallucination_resistance]
+   - 错误：[multi_market_analysis, realtime_data_retrieval, financial_report_writing]
+   选择该任务真正考察的 3-5 个最核心能力。
 6. 建议timeout_seconds（考虑任务复杂度，默认180）
 7. 评估任务复杂度并识别难度等级 difficulty（L1-L4）：
    - L1: 单步执行，单工具调用（1-3步，1个工具，如文件读取、简单查询）
@@ -64,8 +95,9 @@ Query: ${args.query}
         grading_type: { type: 'string', enum: ['automated', 'llm_judge', 'hybrid'] },
         capabilities: {
           type: 'array',
-          items: { type: 'string', pattern: '^[a-z_]+$' },
-          minItems: 3, maxItems: 5
+          items: { type: 'string', enum: ALLOWED_CAPABILITIES },
+          minItems: 3, maxItems: 5,
+          uniqueItems: true
         },
         suggested_timeout: { type: 'number', minimum: 60, maximum: 600 },
         difficulty: { type: 'string', enum: ['L1', 'L2', 'L3', 'L4'] },

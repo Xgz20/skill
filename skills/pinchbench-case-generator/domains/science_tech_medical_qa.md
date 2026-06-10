@@ -14,11 +14,14 @@
 
 ## 核心能力点 (capabilities)
 
-- `domain_knowledge` - 领域知识
-- `logical_reasoning` - 逻辑推理
-- `numeric_computation` - 数值计算
-- `accuracy` - 准确性
-- `citation` - 引用
+> 以下为本领域常见涉及的 Agent 能力，均来自 `references/agent-capability-dimensions.md` 标准清单。
+> 生成用例时从中选取该任务真正考察的 3-5 个（也可按需选用清单内其他标签）。
+
+- `domain_reasoning` - 领域推理（科学/医学/技术专业知识的运用与判断）
+- `multi_step_reasoning` - 多步推理（逻辑推导、公式推导、数学计算）
+- `hallucination_resistance` - 幻觉抑制（事实核验、来源标注、拒绝编造）
+- `safety_awareness` - 安全与权限意识（医学免责、安全边界、伦理约束）
+- `text_generation` - 自然语言生成（概念解释、答案组织）
 
 ## 评测重点
 
