@@ -21,7 +21,12 @@ def _parse_thresholds(s: Optional[str]) -> Optional[FilterThresholds]:
         "gap": "relative_weakness_gap",
         "all_low": "all_low",
         "absolute": "absolute_low",
+        "strength_min": "relative_strength_min",
+        "strength_gap": "relative_strength_gap",
+        "absolute_high": "absolute_high",
+        "strength_top_n": "strength_top_n",
     }
+    int_attrs = {"strength_top_n"}
     for pair in s.split(","):
         k, _, v = pair.partition("=")
         k = k.strip()
@@ -30,13 +35,15 @@ def _parse_thresholds(s: Optional[str]) -> Optional[FilterThresholds]:
             continue
         attr = mapping.get(k)
         if attr:
+            caster = int if attr in int_attrs else float
             try:
-                setattr(th, attr, float(v))
+                setattr(th, attr, caster(v))
             except ValueError:
                 print(f"错误：阈值 '{k}' 需要数值，收到 '{v}'", file=sys.stderr)
                 sys.exit(1)
         else:
-            print(f"警告：未知阈值键 '{k}'，可用: min_others, gap, all_low, absolute", file=sys.stderr)
+            print(f"警告：未知阈值键 '{k}'，可用: min_others, gap, all_low, absolute, "
+                  f"strength_min, strength_gap, absolute_high, strength_top_n", file=sys.stderr)
     return th
 
 
@@ -59,6 +66,7 @@ def cmd_collect(inputs: List[str], target_model: str, tasks_root: str,
 
     print(f"collected_data 已写入: {output}")
     print(f"待深度分析任务数: {len(data['tasks_to_analyze'])}")
+    print(f"待深度分析优势任务数: {len(data.get('strengths_to_analyze', []))}")
 
 
 def cmd_render(collected_data: str, analysis: str, output: str):
@@ -98,7 +106,8 @@ def main():
     pc.add_argument("--target-model", default="xsparkx2flash")
     pc.add_argument("--tasks-root", default="tasks", help="任务 md 根目录")
     pc.add_argument("--output", default="collected_data.json")
-    pc.add_argument("--thresholds", default=None, help="如 all_low=0.4,gap=0.2")
+    pc.add_argument("--thresholds", default=None,
+                    help="如 all_low=0.4,gap=0.2,strength_min=0.8,strength_top_n=12")
 
     pr = sub.add_parser("render", help="阶段3：渲染报告")
     pr.add_argument("--collected-data", required=True)

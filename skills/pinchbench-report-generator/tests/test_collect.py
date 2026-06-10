@@ -46,6 +46,24 @@ def test_build_collected_data(tmp_path):
     # transcript 路径已解析
     stock = next(a for a in data["tasks_to_analyze"] if a["task_id"] == "task_stock")
     assert stock["target_transcript"].endswith("task_stock.jsonl")
+    # 优势任务字段存在（task_ok 全员 1.0 持平，不构成相对优势）
+    assert "strengths_to_analyze" in data
+
+
+def test_build_collected_data_captures_strength(tmp_path):
+    # 目标在 task_win 领先：spark 1.0 vs ds 0.4 → relative_strength
+    _make_model_dir(tmp_path, "spark", "xsparkx2flash",
+                    [_task("task_win", "research", 1.0), _task("task_ok", "coding", 0.7)])
+    _make_model_dir(tmp_path, "ds", "xopdeepseek",
+                    [_task("task_win", "research", 0.4), _task("task_ok", "coding", 0.7)])
+    data = build_collected_data([tmp_path], target_model="xsparkx2flash",
+                                tasks_root=tmp_path / "tasks")
+    strength_ids = {s["task_id"]: s for s in data["strengths_to_analyze"]}
+    assert "task_win" in strength_ids
+    assert strength_ids["task_win"]["reason"] == "relative_strength"
+    # 对照 transcript 指向得分最高的对手
+    bo = strength_ids["task_win"]["best_other_transcript"]
+    assert bo is not None and bo["transcript"].endswith("task_win.jsonl")
 
 
 def test_resolve_transcript_path(tmp_path):

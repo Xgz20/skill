@@ -30,24 +30,26 @@ python skills/pinchbench-report-generator/scripts/report_cli.py collect \
   --target-model xsparkx2flash \
   --tasks-root tasks \
   --output collected_data.json \
-  [--thresholds all_low=0.4,gap=0.2,min_others=0.8,absolute=0.8]
+  [--thresholds all_low=0.4,gap=0.2,min_others=0.8,absolute=0.8,strength_min=0.8,strength_gap=0.2,absolute_high=0.9,strength_top_n=12]
 ```
 
-产出 `collected_data.json`，含模型统计、任务矩阵、分类别汇总、`tasks_to_analyze`（待深度分析任务及其 transcript/任务md 路径与入选原因）。
+产出 `collected_data.json`，含模型统计、任务矩阵、分类别汇总、`tasks_to_analyze`（待深度分析的**失分**任务）、`strengths_to_analyze`（待深度分析的**优势**任务，按领先幅度降序 top-N）。两者结构相同，均含 transcript/任务md 路径与入选原因。
 
 ### 阶段2：深度分析（LLM，由你执行）
 
-读取 `collected_data.json` 后，对 `tasks_to_analyze` 中的每个任务：
+读取 `collected_data.json` 后，对 `tasks_to_analyze`（失分）与 `strengths_to_analyze`（优势）中的每个任务：
 
-1. 读 `target_transcript`（目标模型过程），必要时读 `best_other_transcript`（高分对比模型）做对照
+1. 读 `target_transcript`（目标模型过程），必要时读 `best_other_transcript`（对照模型，优势/短板均取得分最高的对手）做对照
 2. 读 `task_md`（任务定义），提取 **Grading Criteria / Automated Checks / LLM Judge Rubric**，翻译成中文
 3. 参考 `references/agent-capability-dimensions.md`（20 个能力维度），为任务做能力归类
-4. 结合 breakdown + notes + transcript 行为，分析目标模型失分点与对比模型为何得分
+4. 结合 breakdown + notes + transcript 行为，分析目标模型的失分点 / 得分亮点，以及对照模型为何不同
 
 按入选原因区分分析角度：
 - `relative_weakness`：目标模型独有短板，重点对比目标 vs 对比模型的行为差异
 - `all_low`：全员低分，重点分析任务本身难度或环境问题
 - `absolute_low`：单模型场景的绝对低分
+- `relative_strength`：目标模型独有优势，重点分析目标做对了什么、对比模型差在哪
+- `absolute_high`：单模型场景的绝对高分，分析目标模型的制胜做法
 
 产出 `analysis.json`，结构：
 
@@ -55,15 +57,21 @@ python skills/pinchbench-report-generator/scripts/report_cli.py collect \
 {
   "capability_mapping": {"<task_id>": ["能力维度名", ...]},
   "task_analysis": [{
-    "task_id": "...", "filter_reason": "relative_weakness|all_low|absolute_low",
+    "task_id": "...",
+    "filter_reason": "relative_weakness|all_low|absolute_low|relative_strength|absolute_high",
     "grading_criteria_cn": "评分标准中文翻译",
-    "target_model_breakdown": {"notes": "...", "transcript_summary": "关键行为摘要"},
-    "comparison_models": [{"model": "...", "score": 1.0, "why_succeeded": "..."}],
-    "root_cause": "根本原因"
+    "target_model_breakdown": {"notes": "失分明细/得分亮点", "transcript_summary": "关键行为摘要"},
+    "comparison_models": [{"model": "...", "score": 1.0, "why_succeeded": "短板:对比为何得分 / 优势:对比为何不及目标"}],
+    "root_cause": "根本原因 / 制胜原因"
   }],
   "target_model_weaknesses": [{
     "theme": "短板主题", "related_tasks": ["..."],
     "evidence": "证据", "comparison": "对比模型表现",
+    "token_data": {"target": 0, "others_avg": 0}
+  }],
+  "target_model_strengths": [{
+    "theme": "优势主题", "related_tasks": ["..."],
+    "evidence": "证据", "comparison": "对比模型为何不及",
     "token_data": {"target": 0, "others_avg": 0}
   }],
   "improvement_suggestions": [{
@@ -73,7 +81,9 @@ python skills/pinchbench-report-generator/scripts/report_cli.py collect \
 }
 ```
 
-**Context 控制**：阶段1 已筛掉高分任务。transcript 大时只读关键片段（toolCall/toolResult/thinking），提取工具调用次数、失败模式、token 消耗，不全量灌入。
+`target_model_strengths` 与 `task_analysis` 中 `filter_reason ∈ {relative_strength, absolute_high}` 的项配合渲染优势章节；缺省（空/不写）时报告自动跳过优势章节。
+
+**Context 控制**：阶段1 已筛掉中间分任务、优势任务已按领先幅度 top-N 截断。transcript 大时只读关键片段（toolCall/toolResult/thinking），提取工具调用次数、失败/成功模式、token 消耗，不全量灌入。
 
 ### 阶段3：渲染报告（Python）
 
@@ -89,7 +99,8 @@ python skills/pinchbench-report-generator/scripts/report_cli.py render \
 ## 报告结构
 
 参考 `astronclaw-result/core-suite/round-2/comparison_four_models_report.md`：
-整体排名 → Agent核心能力对比 → 分类别得分 → 各任务详细得分 → 目标模型短板深度分析 → Token效率 → 分项排名 → 改进建议。单模型时跳过排名/Token对比章节。
+整体排名 → Agent核心能力对比 → 分类别得分 → 各任务详细得分 → 目标模型**优势深度分析**（有 strengths 时）→ 目标模型短板深度分析 → Token效率 → 分项排名 → 改进建议。
+章节号按实际出现的章节动态生成（优势章节缺省时自动收缩编号）。单模型时跳过排名/能力对比/Token/分项排名章节。
 
 ## 目录结构
 

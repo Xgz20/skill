@@ -116,11 +116,13 @@ def test_render_task_detail_table():
 
 
 def test_render_deep_analysis():
-    out = render_deep_analysis(_collected_with_matrix(), _analysis())
+    out = render_deep_analysis(_collected_with_matrix(), _analysis(), section_no=5)
     assert "联网搜索失败后缺乏回退策略" in out
     assert "需联网获取股价并写入文件" in out      # 中文评分标准
     assert "54次工具调用" in out                  # transcript 摘要
     assert "缺乏联网失败回退策略" in out          # 根本原因
+    assert "## 五、" in out                       # 动态章节号
+    assert "### 5.1 " in out                      # 子标题号
 
 
 def test_render_report_multi_model():
@@ -198,3 +200,78 @@ def test_capability_table_sanitizes_pipes():
     analysis = {"capability_mapping": {"task_stock": ["工具调用 | 错误恢复"]}}
     out = render_capability_table(data, analysis)
     assert "工具调用 ｜ 错误恢复" in out  # 竖线被转义为全角
+
+
+# ---- 优势分析 + 动态编号 ----
+from report_renderer import _cn_num
+
+
+def _analysis_with_strength():
+    a = _analysis()
+    a["task_analysis"].append({
+        "task_id": "task_research",
+        "filter_reason": "relative_strength",
+        "grading_criteria_cn": "需检索并综合多源信息",
+        "target_model_breakdown": {
+            "notes": "结构化报告完整", "transcript_summary": "并行检索+综合一次到位"},
+        "comparison_models": [{"model": "ds", "score": 0.4, "why_succeeded": "对照仅给出片段未综合"}],
+        "root_cause": "信息综合与结构化输出能力强",
+    })
+    a["target_model_strengths"] = [{
+        "theme": "信息检索与综合输出领先",
+        "related_tasks": ["task_research"],
+        "evidence": "research 类目标 0.9 vs 对照中位 0.4",
+        "comparison": "对照模型未做综合",
+        "token_data": {"target": 100, "others_avg": 200},
+    }]
+    return a
+
+
+def test_cn_num():
+    assert _cn_num(1) == "一"
+    assert _cn_num(5) == "五"
+    assert _cn_num(9) == "九"
+    assert _cn_num(10) == "十"
+    assert _cn_num(12) == "十二"
+    assert _cn_num(20) == "二十"
+
+
+def test_render_deep_analysis_strength_mode():
+    out = render_deep_analysis(_collected_with_matrix(), _analysis_with_strength(),
+                               section_no=5, mode="strength")
+    assert "优势深度分析" in out
+    assert "信息检索与综合输出领先" in out
+    assert "**得分亮点**" in out        # strength 模式字段措辞
+    assert "**制胜原因**" in out
+    assert "**对比模型差距**" in out
+
+
+def test_render_report_with_strength_section():
+    # 含 strengths：优势章节出现在短板之前，编号连续不跳号
+    out = render_report(_collected_with_matrix(), _analysis_with_strength())
+    assert "优势深度分析" in out
+    assert "短板深度分析" in out
+    # 优势(五) 在 短板(六) 之前
+    assert out.index("优势深度分析") < out.index("短板深度分析")
+    assert "五、" in out and "六、" in out
+    # Token 章节顺延到七
+    assert "七、Token消耗与效率对比" in out
+    assert "八、分项排名" in out
+    assert "九、最终总结与改进建议" in out
+
+
+def test_render_report_without_strength_section():
+    # 无 strengths：不出优势章节，短板回到五、Token 回到六（向后兼容旧 analysis）
+    out = render_report(_collected_with_matrix(), _analysis())
+    assert "优势深度分析" not in out
+    assert "五、" in out and "短板深度分析" in out
+    assert "六、Token消耗与效率对比" in out
+
+
+def test_render_report_single_model_strength_title():
+    d = _collected_with_matrix()
+    d["is_single_model"] = True
+    d["models"] = [d["models"][1]]
+    out = render_report(d, _analysis_with_strength())
+    assert "高分任务深度分析" in out      # 单模型优势标题措辞
+    assert "整体排名" not in out

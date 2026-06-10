@@ -29,6 +29,18 @@ def _sanitize_cell(s: str) -> str:
     return str(s).replace("|", "｜")
 
 
+_CN_DIGITS = "零一二三四五六七八九"
+
+
+def _cn_num(n: int) -> str:
+    """阿拉伯数字转中文章节序号（1→一，10→十，12→十二）。仅支持 1-99，够用。"""
+    if n < 10:
+        return _CN_DIGITS[n]
+    tens, ones = divmod(n, 10)
+    head = ("" if tens == 1 else _CN_DIGITS[tens]) + "十"
+    return head + (_CN_DIGITS[ones] if ones else "")
+
+
 def render_ranking_table(data: Dict) -> str:
     """一、整体排名。models 已按得分降序。"""
     models = data["models"]
@@ -106,24 +118,38 @@ def _short_note(row: Dict, models: List[Dict]) -> str:
     return note[:80] if note else "—"
 
 
-def render_deep_analysis(data: Dict, analysis: Dict) -> str:
-    """五、目标模型短板深度分析。"""
+def render_deep_analysis(data: Dict, analysis: Dict, section_no: int, mode: str = "weakness") -> str:
+    """目标模型深度分析章节。mode='weakness' 短板 / 'strength' 优势。
+
+    两种模式共用 task_analysis（按 filter_reason 区分），主题列表分别取
+    target_model_weaknesses / target_model_strengths，字段措辞按 mode 切换。
+    """
     target = data["target_model"]
     target_name = _display(data["models"], target)
-    title = (f"## 五、{target_name} 短板深度分析"
-             if not data["is_single_model"]
-             else f"## 五、{target_name} 失分任务深度分析")
-    parts = [title, ""]
+    cn = _cn_num(section_no)
 
-    weaknesses = analysis.get("target_model_weaknesses", [])
+    if mode == "strength":
+        title = (f"## {cn}、{target_name} 优势深度分析"
+                 if not data["is_single_model"]
+                 else f"## {cn}、{target_name} 高分任务深度分析")
+        themes = analysis.get("target_model_strengths", [])
+        labels = {"detail": "得分亮点", "comp": "对比模型差距", "cause": "制胜原因"}
+    else:
+        title = (f"## {cn}、{target_name} 短板深度分析"
+                 if not data["is_single_model"]
+                 else f"## {cn}、{target_name} 失分任务深度分析")
+        themes = analysis.get("target_model_weaknesses", [])
+        labels = {"detail": "失分明细", "comp": "对比模型表现", "cause": "根本原因"}
+
+    parts = [title, ""]
     analysis_by_id = {a["task_id"]: a for a in analysis.get("task_analysis", [])}
 
-    for i, w in enumerate(weaknesses, 1):
-        parts.append(f"### 5.{i} {w['theme']}")
+    for i, w in enumerate(themes, 1):
+        parts.append(f"### {section_no}.{i} {w['theme']}")
         parts.append("")
         parts.append(f"**相关任务**: {', '.join(w.get('related_tasks', []))}")
         parts.append("")
-        # 每个相关任务的评分标准 + 失分明细 + 根本原因
+        # 每个相关任务的评分标准 + 明细 + 原因
         for tid in w.get("related_tasks", []):
             a = analysis_by_id.get(tid)
             if not a:
@@ -133,7 +159,7 @@ def render_deep_analysis(data: Dict, analysis: Dict) -> str:
             parts.append(a.get("grading_criteria_cn", ""))
             parts.append("")
             tb = a.get("target_model_breakdown", {})
-            parts.append(f"**失分明细**: {tb.get('notes', '')}")
+            parts.append(f"**{labels['detail']}**: {tb.get('notes', '')}")
             parts.append("")
             parts.append(f"**过程分析**: {tb.get('transcript_summary', '')}")
             parts.append("")
@@ -141,9 +167,9 @@ def render_deep_analysis(data: Dict, analysis: Dict) -> str:
             if comps:
                 comp_str = "；".join(
                     f"{c['model']}({c['score']:.3g})：{c['why_succeeded']}" for c in comps)
-                parts.append(f"**对比模型表现**: {comp_str}")
+                parts.append(f"**{labels['comp']}**: {comp_str}")
                 parts.append("")
-            parts.append(f"**根本原因**: {a.get('root_cause', '')}")
+            parts.append(f"**{labels['cause']}**: {a.get('root_cause', '')}")
             parts.append("")
         parts.append(f"**证据**: {w.get('evidence', '')}")
         parts.append("")
@@ -164,7 +190,7 @@ def render_improvements(analysis: Dict) -> str:
 
 
 def render_report(data: Dict, analysis: Dict) -> str:
-    """组装完整报告，单/多模型自适应。"""
+    """组装完整报告，单/多模型自适应。章节号按实际出现的章节动态生成。"""
     models = data["models"]
     is_single = data["is_single_model"]
     suite = models[0].get("suite", "unknown") if models else "unknown"
@@ -176,23 +202,40 @@ def render_report(data: Dict, analysis: Dict) -> str:
 
     parts = [title, "", f"> 评测框架：PinchBench {suite} suite | 目标模型：{data['target_model']}", ""]
 
+    sec = 0  # 动态章节计数器
+
+    def add_section(heading: str, body: str):
+        nonlocal sec
+        sec += 1
+        parts.extend([f"## {_cn_num(sec)}、{heading}", "", body, ""])
+
     if not is_single:
-        parts += ["## 一、整体排名", "", render_ranking_table(data), ""]
+        add_section("整体排名", render_ranking_table(data))
         cap = render_capability_table(data, analysis)
         if cap:
-            parts += ["## 二、Agent核心能力对比", "", cap, ""]
+            add_section("Agent核心能力对比", cap)
 
-    parts += ["## 三、分类别得分对比", "", render_category_table(data), ""]
-    parts += ["## 四、各任务详细得分", "", render_task_detail_table(data, analysis), ""]
-    parts += [render_deep_analysis(data, analysis).rstrip("\n"), ""]
+    add_section("分类别得分对比", render_category_table(data))
+    add_section("各任务详细得分", render_task_detail_table(data, analysis))
+
+    # 优势深度分析（仅当 LLM 产出了 strengths 时出现，标题号已含在内）
+    if analysis.get("target_model_strengths"):
+        sec += 1
+        parts.append(render_deep_analysis(data, analysis, sec, mode="strength").rstrip("\n"))
+        parts.append("")
+
+    # 短板深度分析
+    sec += 1
+    parts.append(render_deep_analysis(data, analysis, sec, mode="weakness").rstrip("\n"))
+    parts.append("")
 
     if not is_single:
-        parts += ["## 六、Token消耗与效率对比", "", render_token_table(data), ""]
-        parts += ["## 七、分项排名", "", render_subrankings(data), ""]
+        add_section("Token消耗与效率对比", render_token_table(data))
+        add_section("分项排名", render_subrankings(data))
 
     imp = render_improvements(analysis)
     if imp:
-        parts += ["## 八、最终总结与改进建议", "", imp, ""]
+        add_section("最终总结与改进建议", imp)
 
     return "\n".join(parts)
 

@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 from models import ModelResult
 from result_collector import collect_all, discover_model_dirs
 import score_calculator as sc
-from task_filter import filter_tasks_to_analyze, FilterThresholds
+from task_filter import filter_tasks_to_analyze, filter_strength_tasks, FilterThresholds
 
 
 def resolve_transcript_path(model_dir: Path, task_id: str) -> Optional[Path]:
@@ -92,31 +92,36 @@ def build_collected_data(
 
     dir_map = _model_dir_map(inputs, models)
     picked = filter_tasks_to_analyze(models, target_model, thresholds)
+    picked_strengths = filter_strength_tasks(models, target_model, thresholds)
 
     # 高分对比模型（用于对比 transcript）
-    target = next(m for m in models if m.model == target_model)
     others = [m for m in models if m.model != target_model]
 
-    tasks_to_analyze = []
-    for p in picked:
+    def _best_other_transcript(tid: str) -> Optional[Dict]:
+        """选得分最高的对比模型 transcript（短板/优势均用最强对手对照）。"""
+        if not others:
+            return None
+        best = max(others,
+                   key=lambda m: next((t.score for t in m.tasks if t.task_id == tid), 0.0))
+        bo_path = resolve_transcript_path(dir_map[best.model], tid)
+        if bo_path:
+            return {"model": best.model, "transcript": str(bo_path)}
+        return None
+
+    def _build_analyze_entry(p: Dict) -> Dict:
+        """把筛选结果项转为阶段2 输入项（解析 transcript / task_md 路径）。"""
         tid = p["task_id"]
-        target_dir = dir_map[target_model]
-        t_path = resolve_transcript_path(target_dir, tid)
-        # 选得分最高的对比模型 transcript
-        best_other = None
-        if others:
-            best = max(others,
-                       key=lambda m: next((t.score for t in m.tasks if t.task_id == tid), 0.0))
-            bo_path = resolve_transcript_path(dir_map[best.model], tid)
-            if bo_path:
-                best_other = {"model": best.model, "transcript": str(bo_path)}
-        tasks_to_analyze.append({
+        t_path = resolve_transcript_path(dir_map[target_model], tid)
+        return {
             "task_id": tid,
             "reason": p["reason"],
             "target_transcript": str(t_path) if t_path else None,
-            "best_other_transcript": best_other,
+            "best_other_transcript": _best_other_transcript(tid),
             "task_md": str(tasks_root / f"{tid}.md"),
-        })
+        }
+
+    tasks_to_analyze = [_build_analyze_entry(p) for p in picked]
+    strengths_to_analyze = [_build_analyze_entry(p) for p in picked_strengths]
 
     return {
         "target_model": target_model,
@@ -125,4 +130,5 @@ def build_collected_data(
         "category_summary": sc.build_category_summary(models),
         "task_matrix": _task_matrix(models),
         "tasks_to_analyze": tasks_to_analyze,
+        "strengths_to_analyze": strengths_to_analyze,
     }
