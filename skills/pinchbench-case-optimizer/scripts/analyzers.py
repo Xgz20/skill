@@ -1,4 +1,4 @@
-"""五维度分析器：分析评测结果，识别用例优化点。
+"""七维度分析器：分析评测结果，识别用例优化点。
 
 维度：
 - A. Prompt 清晰度（需 LLM 分析 transcript）
@@ -6,6 +6,8 @@
 - C. 难度区分度（纯数据计算）
 - D. 超时设置（纯数据计算）
 - E. 工具使用合理性（transcript 解析）
+- F. Capabilities 标注准确性（自动校验标签合法性）
+- G. Difficulty 准确性（transcript 反推难度 + 区间校验）
 """
 import statistics
 from typing import Dict, List
@@ -310,3 +312,248 @@ def _summarize_transcript(transcript: List[Dict], max_messages: int = 20) -> Lis
         summary.append({"role": role, "content": content_text})
         count += 1
     return summary
+
+
+# ============ 新增维度：F、G ============
+
+def _load_standard_capabilities() -> set:
+    """
+    从 references/agent-capability-dimensions.md 加载标准能力清单。
+
+    Returns:
+        标准能力标签集合（20个 snake_case 标签）
+    """
+    import re
+    from pathlib import Path
+
+    # 定位 references/ 相对当前脚本的路径
+    ref_path = Path(__file__).parent.parent / "references" / "agent-capability-dimensions.md"
+    if not ref_path.exists():
+        raise FileNotFoundError(
+            f"能力清单文件缺失: {ref_path}\n"
+            f"请确保 optimizer 的 references/ 目录包含 agent-capability-dimensions.md"
+        )
+
+    doc = ref_path.read_text(encoding="utf-8")
+    # 提取「## 标签速查表」章节的所有 `tag` 行
+    table_section = doc.split("## 标签速查表")[1] if "## 标签速查表" in doc else ""
+    tags = set(re.findall(r'\|\s*`([a-z_]+)`\s*\|', table_section))
+
+    if len(tags) < 10:  # 防御性校验
+        raise ValueError(
+            f"能力清单提取异常：仅得到 {len(tags)} 个标签，预期至少 20 个。"
+            f"请检查 {ref_path} 的「标签速查表」格式。"
+        )
+
+    return tags
+
+
+def analyze_capabilities_validity(task_frontmatter: Dict) -> Dict:
+    """
+    维度F：capabilities 标注准确性分析。
+
+    检查用例 frontmatter 的 capabilities 字段是否全部来自标准清单，
+    发现非标准标签（如业务特征词 multi_market_analysis）视为问题。
+
+    优化触发条件：
+    - capabilities 中存在非标准标签
+    - capabilities 数量不在 3-5 个
+    - capabilities 缺失或为空
+
+    Args:
+        task_frontmatter: 用例 YAML frontmatter 字典
+
+    Returns:
+        {has_issue, summary, details}
+    """
+    standard_caps = _load_standard_capabilities()
+    declared_caps = task_frontmatter.get("capabilities", [])
+
+    if not declared_caps:
+        return {
+            "has_issue": True,
+            "summary": "用例缺少 capabilities 字段或为空",
+            "details": {"declared": [], "invalid": [], "count": 0},
+        }
+
+    # 校验：非标准标签
+    invalid_caps = [c for c in declared_caps if c not in standard_caps]
+
+    # 校验：数量不在 3-5 个
+    count_issue = len(declared_caps) < 3 or len(declared_caps) > 5
+
+    has_issue = bool(invalid_caps) or count_issue
+
+    if has_issue:
+        issues = []
+        if invalid_caps:
+            issues.append(
+                f"包含非标准标签: {', '.join(invalid_caps)} "
+                f"(应全部来自 references/agent-capability-dimensions.md)"
+            )
+        if count_issue:
+            issues.append(f"数量为 {len(declared_caps)}，应为 3-5 个")
+        summary = "；".join(issues)
+    else:
+        summary = f"全部 {len(declared_caps)} 个能力标签均为标准标签，数量合规"
+
+    return {
+        "has_issue": has_issue,
+        "summary": summary,
+        "details": {
+            "declared": declared_caps,
+            "invalid": invalid_caps,
+            "count": len(declared_caps),
+        },
+    }
+
+
+def _infer_difficulty_from_transcript(transcript: List[Dict]) -> Dict:
+    """
+    从 transcript 反推任务实际难度。
+
+    使用与 generator 一致的规则（但输入是实际数据而非预估）：
+    - 统计实际工具调用数（去重按 tool name）
+    - 统计对话轮次（assistant 消息数）
+
+    难度规则（与 generator/workflow line 365-368 一致）：
+      steps >= 30 → L4
+      steps >= 10 or tools >= 4 → L3
+      steps >= 4 or tools >= 2 → L2
+      否则 → L1
+
+    Args:
+        transcript: OpenClaw 事件流列表
+
+    Returns:
+        {inferred_level, actual_steps, actual_tools, tool_list}
+    """
+    # 统计对话轮次（assistant 消息数作为步数代理）
+    assistant_count = 0
+    for event in transcript:
+        if event.get("type") != "message":
+            continue
+        if event.get("message", {}).get("role") == "assistant":
+            assistant_count += 1
+
+    # 统计实际工具调用（去重按 name）
+    tool_calls = extract_tool_calls(transcript)
+    unique_tools = set(c["name"] for c in tool_calls)
+    tools_count = len(unique_tools)
+
+    # 应用 generator 同款难度规则
+    steps = assistant_count
+    if steps >= 30:
+        level = "L4"
+    elif steps >= 10 or tools_count >= 4:
+        level = "L3"
+    elif steps >= 4 or tools_count >= 2:
+        level = "L2"
+    else:
+        level = "L1"
+
+    return {
+        "inferred_level": level,
+        "actual_steps": steps,
+        "actual_tools": tools_count,
+        "tool_list": sorted(unique_tools),
+    }
+
+
+def analyze_difficulty_accuracy(
+    task_frontmatter: Dict,
+    model_results: List[Dict],
+) -> Dict:
+    """
+    维度G：difficulty 准确性分析。
+
+    从 transcript 反推实际难度，与用例声明的 difficulty 对比。
+    同时校验 difficulty 与 timeout_seconds 的区间一致性。
+
+    优化触发条件：
+    - 声明难度与反推难度不一致
+    - difficulty 与 timeout 不在合理区间（与 generator 校验规则一致）
+
+    Args:
+        task_frontmatter: 用例 frontmatter 字典
+        model_results: 各模型评测结果（含 transcript）
+
+    Returns:
+        {has_issue, summary, details}
+    """
+    declared_difficulty = task_frontmatter.get("difficulty", "")
+    timeout_seconds = task_frontmatter.get("timeout_seconds", 180)
+
+    if not model_results:
+        return {
+            "has_issue": False,
+            "summary": "无评测数据，无法反推难度",
+            "details": {},
+        }
+
+    # 从所有模型的 transcript 反推难度，取中位数（避免单个模型异常）
+    inferred_data_list = []
+    for r in model_results:
+        transcript = r.get("transcript", [])
+        if transcript:
+            inferred = _infer_difficulty_from_transcript(transcript)
+            inferred_data_list.append(inferred)
+
+    if not inferred_data_list:
+        return {
+            "has_issue": False,
+            "summary": "无有效 transcript，无法反推难度",
+            "details": {},
+        }
+
+    # 取反推结果的众数（最常见的难度等级）
+    from collections import Counter
+    level_counter = Counter(d["inferred_level"] for d in inferred_data_list)
+    inferred_level, _ = level_counter.most_common(1)[0]
+
+    # 取实际 steps/tools 的中位数
+    actual_steps_list = [d["actual_steps"] for d in inferred_data_list]
+    actual_tools_list = [d["actual_tools"] for d in inferred_data_list]
+    median_steps = sorted(actual_steps_list)[len(actual_steps_list) // 2]
+    median_tools = sorted(actual_tools_list)[len(actual_tools_list) // 2]
+
+    # 校验1：声明 vs 反推
+    difficulty_mismatch = (declared_difficulty != inferred_level)
+
+    # 校验2：difficulty 与 timeout 区间一致性（与 generator/workflow line 379-383 一致）
+    TIMEOUT_RANGES = {
+        "L1": (60, 180), "L2": (120, 300), "L3": (180, 600), "L4": (300, 600)
+    }
+    timeout_mismatch = False
+    if declared_difficulty in TIMEOUT_RANGES:
+        t_min, t_max = TIMEOUT_RANGES[declared_difficulty]
+        timeout_mismatch = not (t_min <= timeout_seconds <= t_max)
+
+    has_issue = difficulty_mismatch or timeout_mismatch
+
+    issues = []
+    if difficulty_mismatch:
+        issues.append(
+            f"声明 {declared_difficulty} 与反推 {inferred_level} 不一致 "
+            f"(实际中位数: {median_steps}步/{median_tools}工具)"
+        )
+    if timeout_mismatch:
+        issues.append(
+            f"{declared_difficulty} 建议 timeout 区间 {t_min}-{t_max}s，"
+            f"当前 {timeout_seconds}s 越界"
+        )
+
+    summary = "；".join(issues) if issues else f"难度 {declared_difficulty} 与实际一致，timeout 合规"
+
+    return {
+        "has_issue": has_issue,
+        "summary": summary,
+        "details": {
+            "declared_difficulty": declared_difficulty,
+            "inferred_difficulty": inferred_level,
+            "actual_steps_median": median_steps,
+            "actual_tools_median": median_tools,
+            "timeout_seconds": timeout_seconds,
+            "timeout_range": TIMEOUT_RANGES.get(declared_difficulty, "N/A"),
+        },
+    }

@@ -4,7 +4,7 @@ PinchBench 评测用例优化器
 
 职责：
 1. 读取批量评测结果 + transcripts
-2. 五维度分析（C/D/E自动 + A/B数据准备供LLM分析）
+2. 七维度分析（C/D/E/F/G自动 + A/B数据准备供LLM分析）
 3. 家族识别与基线对比
 4. 生成优化用例 + 详细报告
 5. 收敛检测
@@ -14,7 +14,7 @@ CLI 用法（analyze 阶段）：
 
 完整端到端是两阶段 Python API（不是单个 CLI）：
     1. opt_data = run_optimization(task_input, results_dir)
-       → 自动完成 C/D/E 维度，返回 LLM 待分析数据包
+       → 自动完成 C/D/E/F/G 维度，返回 LLM 待分析数据包
     2. （由上层 Skill agent 调用 LLM 完成 A/B 维度并生成优化用例内容）
     3. finalize_optimization(opt_data, full_analysis, optimized_content)
        → 写入优化用例 + 生成报告 + 收敛检测
@@ -43,6 +43,8 @@ from analyzers import (
     analyze_timeout,
     analyze_tool_usage,
     prepare_llm_analysis_data,
+    analyze_capabilities_validity,
+    analyze_difficulty_accuracy,
 )
 from convergence import check_convergence
 from report_generator import generate_report
@@ -106,7 +108,7 @@ def run_optimization(
             prev_score_mean = sum(r["score"] for r in prev_results) / len(prev_results)
         print(f"📈 基线: {prev_results_path}（均分 {prev_score_mean:.3f}）")
 
-    # 5. 五维度分析（C/D/E 自动）
+    # 5. 七维度分析（C/D/E/F/G 自动，A/B 待 LLM）
     analysis = {
         # A/B 维度先占位，由 LLM 分析后填充
         "prompt_clarity": {
@@ -122,6 +124,8 @@ def run_optimization(
         "difficulty": analyze_difficulty(model_results),
         "timeout": analyze_timeout(model_results),
         "tool_usage": analyze_tool_usage(model_results),
+        "capabilities_validity": analyze_capabilities_validity(original_task["frontmatter"]),
+        "difficulty_accuracy": analyze_difficulty_accuracy(original_task["frontmatter"], model_results),
     }
 
     # 6. 准备 LLM 分析数据（维度 A/B）

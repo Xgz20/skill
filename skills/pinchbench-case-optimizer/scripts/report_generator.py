@@ -77,12 +77,14 @@ def generate_report(
     content += "## 模型表现总览\n\n"
     content += format_model_overview(model_results) + "\n\n"
 
-    # 五维度分析
+    # 七维度分析
     content += _format_dimension("维度A：Prompt清晰度分析", "prompt_clarity", analysis)
     content += _format_dimension("维度B：评分标准合理性", "grading_validity", analysis)
     content += _format_dimension("维度C：难度区分度", "difficulty", analysis)
     content += _format_dimension("维度D：超时设置", "timeout", analysis)
     content += _format_dimension("维度E：工具使用合理性", "tool_usage", analysis)
+    content += _format_dimension("维度F：Capabilities 标注准确性", "capabilities_validity", analysis)
+    content += _format_dimension("维度G：Difficulty 准确性", "difficulty_accuracy", analysis)
 
     # 收敛性判断
     content += "## 收敛性判断\n\n"

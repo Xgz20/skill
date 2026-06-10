@@ -247,3 +247,167 @@ def test_extract_tool_calls_from_real_transcript():
         assert "success" in c
         assert isinstance(c["success"], bool)
 
+
+# ============ 维度F：capabilities_validity ============
+from analyzers import analyze_capabilities_validity
+
+
+def test_capabilities_all_standard():
+    """全部为标准标签，数量合规 → 无问题"""
+    frontmatter = {
+        "capabilities": ["tool_usage", "information_retrieval", "output_format"]
+    }
+    result = analyze_capabilities_validity(frontmatter)
+    assert result["has_issue"] is False
+    assert result["details"]["invalid"] == []
+    assert result["details"]["count"] == 3
+
+
+def test_capabilities_invalid_tag():
+    """包含业务特征词（非标准标签）→ 发现问题"""
+    frontmatter = {
+        "capabilities": ["tool_usage", "multi_market_analysis", "output_format"]
+    }
+    result = analyze_capabilities_validity(frontmatter)
+    assert result["has_issue"] is True
+    assert "multi_market_analysis" in result["details"]["invalid"]
+
+
+def test_capabilities_too_few():
+    """数量少于3个 → 发现问题"""
+    frontmatter = {
+        "capabilities": ["tool_usage", "output_format"]
+    }
+    result = analyze_capabilities_validity(frontmatter)
+    assert result["has_issue"] is True
+    assert result["details"]["count"] == 2
+
+
+def test_capabilities_too_many():
+    """数量多于5个 → 发现问题"""
+    frontmatter = {
+        "capabilities": [
+            "tool_usage", "output_format", "information_retrieval",
+            "data_extraction", "planning", "text_generation"
+        ]
+    }
+    result = analyze_capabilities_validity(frontmatter)
+    assert result["has_issue"] is True
+    assert result["details"]["count"] == 6
+
+
+def test_capabilities_missing():
+    """缺少 capabilities 字段 → 发现问题"""
+    frontmatter = {}
+    result = analyze_capabilities_validity(frontmatter)
+    assert result["has_issue"] is True
+
+
+# ============ 维度G：difficulty_accuracy ============
+from analyzers import analyze_difficulty_accuracy, _infer_difficulty_from_transcript
+
+
+def _make_transcript(n_assistant: int, tool_names: list) -> list:
+    """构造最小 transcript：n 条 assistant 消息，每条带一个 toolCall"""
+    events = []
+    tool_call_id = 0
+    for i in range(n_assistant):
+        content = [{"type": "text", "text": f"step {i}"}]
+        if i < len(tool_names):
+            content.append({
+                "type": "toolCall",
+                "id": f"call_{tool_call_id}",
+                "name": tool_names[i],
+                "arguments": {},
+            })
+            # 对应的 toolResult
+            events.append({
+                "type": "message",
+                "message": {
+                    "role": "toolResult",
+                    "toolCallId": f"call_{tool_call_id}",
+                    "toolName": tool_names[i],
+                    "isError": False,
+                    "content": "ok",
+                },
+            })
+            tool_call_id += 1
+        events.append({
+            "type": "message",
+            "message": {"role": "assistant", "content": content},
+        })
+    return events
+
+
+def test_infer_difficulty_l1():
+    """1步1工具 → L1"""
+    transcript = _make_transcript(1, ["read_file"])
+    result = _infer_difficulty_from_transcript(transcript)
+    assert result["inferred_level"] == "L1"
+    assert result["actual_steps"] == 1
+    assert result["actual_tools"] == 1
+
+
+def test_infer_difficulty_l2():
+    """5步2工具 → L2"""
+    transcript = _make_transcript(5, ["web_search", "write_file"])
+    result = _infer_difficulty_from_transcript(transcript)
+    assert result["inferred_level"] == "L2"
+
+
+def test_infer_difficulty_l3():
+    """10步4工具 → L3"""
+    tools = ["web_search", "read_file", "write_file", "execute_command"]
+    transcript = _make_transcript(10, tools)
+    result = _infer_difficulty_from_transcript(transcript)
+    assert result["inferred_level"] == "L3"
+
+
+def test_infer_difficulty_l4():
+    """30步 → L4"""
+    transcript = _make_transcript(30, ["web_search"])
+    result = _infer_difficulty_from_transcript(transcript)
+    assert result["inferred_level"] == "L4"
+
+
+def test_difficulty_accuracy_match():
+    """声明与反推一致 → 无问题"""
+    frontmatter = {"difficulty": "L2", "timeout_seconds": 180}
+    # 5步2工具 → 反推 L2
+    t = _make_transcript(5, ["web_search", "write_file"])
+    results = [{"model": "a", "score": 0.7, "transcript": t}]
+    result = analyze_difficulty_accuracy(frontmatter, results)
+    assert result["has_issue"] is False
+    assert result["details"]["inferred_difficulty"] == "L2"
+
+
+def test_difficulty_accuracy_mismatch():
+    """声明 L1 但反推 L3 → 发现问题"""
+    frontmatter = {"difficulty": "L1", "timeout_seconds": 180}
+    tools = ["web_search", "read_file", "write_file", "execute_command"]
+    t = _make_transcript(10, tools)
+    results = [{"model": "a", "score": 0.7, "transcript": t}]
+    result = analyze_difficulty_accuracy(frontmatter, results)
+    assert result["has_issue"] is True
+    assert "L1" in result["summary"]
+    assert "L3" in result["summary"]
+
+
+def test_difficulty_timeout_mismatch():
+    """难度 L3 但 timeout=60s（L1区间）→ 发现问题"""
+    frontmatter = {"difficulty": "L3", "timeout_seconds": 60}
+    tools = ["web_search", "read_file", "write_file", "execute_command"]
+    t = _make_transcript(10, tools)
+    results = [{"model": "a", "score": 0.7, "transcript": t}]
+    result = analyze_difficulty_accuracy(frontmatter, results)
+    assert result["has_issue"] is True
+    assert "越界" in result["summary"]
+
+
+def test_difficulty_no_transcripts():
+    """无 transcript → 不报问题，优雅降级"""
+    frontmatter = {"difficulty": "L2", "timeout_seconds": 180}
+    results = [{"model": "a", "score": 0.5, "transcript": []}]
+    result = analyze_difficulty_accuracy(frontmatter, results)
+    assert result["has_issue"] is False
+
