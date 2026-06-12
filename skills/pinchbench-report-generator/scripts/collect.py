@@ -1,4 +1,5 @@
 """阶段1 编排：整合收集、计算、筛选，产出 collected_data.json。"""
+import re
 import warnings
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -7,6 +8,46 @@ from models import ModelResult
 from result_collector import collect_all, discover_model_dirs
 import score_calculator as sc
 from task_filter import filter_tasks_to_analyze, filter_strength_tasks, FilterThresholds
+
+
+_DIFFICULTY_RE = re.compile(r"^difficulty:\s*([A-Za-z0-9]+)\s*$", re.MULTILINE)
+
+
+def _read_task_md_difficulty(tasks_root: Path, task_id: str) -> Optional[str]:
+    """从 tasks_root/<task_id>.md 的 frontmatter 读取 difficulty 字段。
+
+    旧版评测 JSON 的 frontmatter 不含 difficulty，此处兜底读取任务定义。
+    返回 None 表示文件不存在或未配置 difficulty。
+    """
+    md_path = tasks_root / f"{task_id}.md"
+    if not md_path.exists():
+        return None
+    try:
+        # 仅读前 2KB 已足以覆盖 frontmatter
+        text = md_path.read_text(encoding="utf-8", errors="ignore")[:2048]
+    except OSError:
+        return None
+    m = _DIFFICULTY_RE.search(text)
+    return m.group(1) if m else None
+
+
+def _backfill_difficulty(models: List[ModelResult], tasks_root: Path) -> None:
+    """对 difficulty 仍为 unknown 的任务，从 tasks_root 的 task md 兜底读取。
+
+    多模型间共享同一 task_id 的难度（任务定义唯一），按 task_id 缓存，避免重复 IO。
+    """
+    if not tasks_root.exists():
+        return
+    cache: Dict[str, Optional[str]] = {}
+    for m in models:
+        for t in m.tasks:
+            if t.difficulty != "unknown":
+                continue
+            if t.task_id not in cache:
+                cache[t.task_id] = _read_task_md_difficulty(tasks_root, t.task_id)
+            d = cache[t.task_id]
+            if d:
+                t.difficulty = d
 
 
 def resolve_transcript_path(model_dir: Path, task_id: str) -> Optional[Path]:
@@ -56,9 +97,9 @@ def _task_matrix(models: List[ModelResult]) -> List[Dict]:
         for t in m.tasks:
             if t.task_id not in seen:
                 seen.add(t.task_id)
-                all_ids.append((t.task_id, t.category))
+                all_ids.append((t.task_id, t.category, t.difficulty))
     rows = []
-    for tid, cat in all_ids:
+    for tid, cat, diff in all_ids:
         per_model = {}
         for m in models:
             t = next((x for x in m.tasks if x.task_id == tid), None)
@@ -69,7 +110,8 @@ def _task_matrix(models: List[ModelResult]) -> List[Dict]:
                     "request_count": t.request_count,
                     "timed_out": t.timed_out,
                 }
-        rows.append({"task_id": tid, "category": cat, "per_model": per_model})
+        rows.append({"task_id": tid, "category": cat, "difficulty": diff,
+                     "per_model": per_model})
     return rows
 
 
@@ -83,6 +125,17 @@ def build_collected_data(
     models = collect_all(inputs)
     if not models:
         raise ValueError("未发现任何模型目录")
+
+    # 兜底：旧版 JSON 的 frontmatter 不含 difficulty，从 task md 读取
+    _backfill_difficulty(models, tasks_root)
+
+    # 若仍有 unknown，给出告警（可能是 task md 也未配置）
+    unknown_ids = sorted({t.task_id for m in models for t in m.tasks
+                          if t.difficulty == "unknown"})
+    if unknown_ids:
+        warnings.warn(
+            f"以下任务难度未知（结果 JSON 与 task md 均未配置 difficulty）: "
+            f"{', '.join(unknown_ids[:5])}{'...' if len(unknown_ids) > 5 else ''}")
 
     # 若 target_model 未在结果中，默认取第一个并告警
     if not any(m.model == target_model for m in models):
@@ -128,6 +181,7 @@ def build_collected_data(
         "is_single_model": len(models) == 1,
         "models": [_model_summary(m) for m in sc.rank_models(models)],
         "category_summary": sc.build_category_summary(models),
+        "difficulty_summary": sc.build_difficulty_summary(models),
         "task_matrix": _task_matrix(models),
         "tasks_to_analyze": tasks_to_analyze,
         "strengths_to_analyze": strengths_to_analyze,

@@ -71,3 +71,71 @@ def build_category_summary(models: List[ModelResult]) -> List[Dict]:
 def rank_models(models: List[ModelResult]) -> List[ModelResult]:
     """按总得分率降序排名。"""
     return sorted(models, key=overall_score_rate, reverse=True)
+
+
+# ---- 难度等级维度统计 ----
+
+# 难度排序键：L1<L2<L3<L4<unknown，保证渲染顺序稳定
+_DIFFICULTY_ORDER = {"L1": 1, "L2": 2, "L3": 3, "L4": 4, "unknown": 99}
+
+
+def _difficulty_sort_key(d: str) -> int:
+    return _DIFFICULTY_ORDER.get(d, 50)
+
+
+def build_difficulty_summary(models: List[ModelResult]) -> List[Dict]:
+    """
+    按难度等级聚合各模型得分。任务编排以第一个模型为准（同一 suite 内任务集合一致）。
+
+    Returns: [{
+        "difficulty": "L1"|"L2"|...,
+        "task_count": int,
+        "scores": {model: mean_score},
+        "totals": {model: sum_score},   # 累计分（report 用 "5.90/6" 形式展示）
+        "best_model": model_key,
+        "score_range": float,           # 得分率极差 = max - min
+    }]
+    """
+    if not models:
+        return []
+
+    # 收集所有出现过的难度（以任意模型的任务列表为准——所有模型 suite 一致即可）
+    diffs = sorted({t.difficulty for m in models for t in m.tasks},
+                   key=_difficulty_sort_key)
+
+    rows: List[Dict] = []
+    for d in diffs:
+        # 任务数取首个有该难度任务的模型计数（不同模型 suite 应一致）
+        task_count = max((sum(1 for t in m.tasks if t.difficulty == d)
+                          for m in models), default=0)
+        if task_count == 0:
+            continue
+
+        scores: Dict[str, float] = {}
+        totals: Dict[str, float] = {}
+        for m in models:
+            ds = [t.score for t in m.tasks if t.difficulty == d]
+            scores[m.model] = mean(ds) if ds else 0.0
+            totals[m.model] = sum(ds)
+
+        best = max(scores, key=lambda k: (scores[k], _neg_key(k))) if scores else ""
+        score_values = list(scores.values())
+        rng = (max(score_values) - min(score_values)) if score_values else 0.0
+        rows.append({
+            "difficulty": d,
+            "task_count": task_count,
+            "scores": scores,
+            "totals": totals,
+            "best_model": best,
+            "score_range": rng,
+        })
+    return rows
+
+
+def highest_difficulty(rows: List[Dict]) -> str:
+    """返回最高难度等级（用于 3.3 章节展开），跳过 unknown。"""
+    real = [r for r in rows if r["difficulty"] != "unknown"]
+    if not real:
+        return ""
+    # 取 _DIFFICULTY_ORDER 最大但不为 unknown 的
+    return max(real, key=lambda r: _difficulty_sort_key(r["difficulty"]))["difficulty"]

@@ -18,6 +18,7 @@ class TaskResult:
     output_tokens: int
     total_tokens: int
     request_count: int
+    difficulty: str = "unknown"       # L1/L2/L3/L4，缺失为 unknown
 
 
 @dataclass

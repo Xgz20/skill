@@ -19,7 +19,10 @@ def _make_model_dir(base: Path, name: str, model_field: str, tasks: list):
     return d
 
 
-def _task(tid, cat, score, total=100, reqs=1):
+def _task(tid, cat, score, total=100, reqs=1, difficulty=None):
+    fm = {"category": cat, "grading_weights": {}}
+    if difficulty is not None:
+        fm["difficulty"] = difficulty
     return {
         "task_id": tid, "status": "success", "timed_out": False,
         "execution_time": 1.0,
@@ -27,7 +30,7 @@ def _task(tid, cat, score, total=100, reqs=1):
                   "total_tokens": total, "request_count": reqs},
         "grading": {"mean": score, "runs": [
             {"breakdown": {"automated.x": score}, "notes": "n"}]},
-        "frontmatter": {"category": cat, "grading_weights": {}},
+        "frontmatter": fm,
     }
 
 
@@ -62,3 +65,16 @@ def test_parse_model_json(tmp_path):
     assert t.total_tokens == 150
     assert t.request_count == 2
     assert t.breakdown == {"automated.x": 1.0}
+    # frontmatter 无 difficulty 时默认为 unknown
+    assert t.difficulty == "unknown"
+
+
+def test_parse_model_json_with_difficulty(tmp_path):
+    # round-3 起 frontmatter 含 difficulty 字段
+    d = _make_model_dir(tmp_path, "xds", "xopdeepseek", [
+        _task("task_a", "coding", 1.0, difficulty="L1"),
+        _task("task_b", "research", 0.8, difficulty="L3"),
+    ])
+    m = parse_model_json(d)
+    assert m.tasks[0].difficulty == "L1"
+    assert m.tasks[1].difficulty == "L3"

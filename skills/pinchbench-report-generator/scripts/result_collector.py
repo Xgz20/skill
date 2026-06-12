@@ -83,6 +83,7 @@ def parse_model_json(model_dir: Path) -> ModelResult:
             output_tokens=usage.get("output_tokens", 0),
             total_tokens=usage.get("total_tokens", 0),
             request_count=usage.get("request_count", 0),
+            difficulty=fm.get("difficulty") or "unknown",
         ))
 
     model_field = data.get("model", model_dir.name)

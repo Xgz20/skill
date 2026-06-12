@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
-from collect import build_collected_data, resolve_transcript_path
+from collect import build_collected_data, resolve_transcript_path, _read_task_md_difficulty
 
 
 def _make_model_dir(base, name, model_field, tasks):
@@ -20,14 +20,17 @@ def _make_model_dir(base, name, model_field, tasks):
     return d
 
 
-def _task(tid, cat, score):
+def _task(tid, cat, score, difficulty=None):
+    fm = {"category": cat, "grading_weights": {}}
+    if difficulty is not None:
+        fm["difficulty"] = difficulty
     return {"task_id": tid, "status": "success", "timed_out": False,
             "execution_time": 1.0,
             "usage": {"input_tokens": 90, "output_tokens": 10,
                       "total_tokens": 100, "request_count": 1},
             "grading": {"mean": score, "runs": [
                 {"breakdown": {"automated.x": score}, "notes": "note"}]},
-            "frontmatter": {"category": cat, "grading_weights": {}}}
+            "frontmatter": fm}
 
 
 def test_build_collected_data(tmp_path):
@@ -88,3 +91,52 @@ def test_build_collected_data_single_model(tmp_path):
     ids = {a["task_id"]: a["reason"] for a in data["tasks_to_analyze"]}
     assert ids.get("task_low") == "absolute_low"
     assert "task_ok" not in ids
+
+
+# ---- 难度等级支持 ----
+
+def test_collected_data_has_difficulty_summary(tmp_path):
+    _make_model_dir(tmp_path, "spark", "xsparkx2flash", [
+        _task("t1", "coding", 1.0, difficulty="L1"),
+        _task("t2", "research", 0.5, difficulty="L3"),
+    ])
+    _make_model_dir(tmp_path, "ds", "xopdeepseek", [
+        _task("t1", "coding", 1.0, difficulty="L1"),
+        _task("t2", "research", 1.0, difficulty="L3"),
+    ])
+    data = build_collected_data([tmp_path], target_model="xsparkx2flash",
+                                tasks_root=tmp_path / "tasks")
+    rows = data["difficulty_summary"]
+    assert [r["difficulty"] for r in rows] == ["L1", "L3"]
+    assert rows[1]["task_count"] == 1
+    assert rows[1]["best_model"] == "xopdeepseek"
+    # task_matrix 行内携带 difficulty
+    diff_map = {row["task_id"]: row["difficulty"] for row in data["task_matrix"]}
+    assert diff_map == {"t1": "L1", "t2": "L3"}
+
+
+def test_difficulty_backfill_from_task_md(tmp_path):
+    # 旧版 JSON 不写 difficulty，靠 tasks_root 兜底
+    _make_model_dir(tmp_path, "spark", "xsparkx2flash", [
+        _task("task_x", "coding", 1.0),         # 无 difficulty
+        _task("task_y", "research", 0.5),       # 无 difficulty
+    ])
+    tasks_root = tmp_path / "tasks"
+    tasks_root.mkdir()
+    (tasks_root / "task_x.md").write_text(
+        "---\nid: task_x\ncategory: coding\ndifficulty: L1\n---\n## Prompt\n")
+    (tasks_root / "task_y.md").write_text(
+        "---\nid: task_y\ncategory: research\ndifficulty: L3\n---\n## Prompt\n")
+
+    data = build_collected_data([tmp_path], target_model="xsparkx2flash",
+                                tasks_root=tasks_root)
+    diff_map = {row["task_id"]: row["difficulty"] for row in data["task_matrix"]}
+    assert diff_map == {"task_x": "L1", "task_y": "L3"}
+
+
+def test_read_task_md_difficulty_missing(tmp_path):
+    # 文件不存在时返回 None
+    assert _read_task_md_difficulty(tmp_path, "no_such") is None
+    # 文件存在但没有 difficulty 行
+    (tmp_path / "task_z.md").write_text("---\nid: task_z\ncategory: coding\n---\n")
+    assert _read_task_md_difficulty(tmp_path, "task_z") is None

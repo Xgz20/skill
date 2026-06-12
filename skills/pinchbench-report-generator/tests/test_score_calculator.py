@@ -7,12 +7,13 @@ from models import ModelResult, TaskResult
 from score_calculator import (
     overall_score_rate, category_scores, count_high_tasks,
     count_low_tasks, token_efficiency, build_category_summary,
+    build_difficulty_summary, highest_difficulty,
 )
 
 
-def _t(tid, cat, score, total=1000):
+def _t(tid, cat, score, total=1000, difficulty="unknown"):
     return TaskResult(tid, cat, "success", False, 1.0, score, {}, "",
-                      total - 10, 10, total, 1)
+                      total - 10, 10, total, 1, difficulty)
 
 
 def _model(name, tasks):
@@ -73,3 +74,69 @@ def test_build_category_summary_tie_deterministic():
     summary = build_category_summary([m_b, m_a])  # 注意传入顺序 b 在前
     coding = next(r for r in summary if r["category"] == "coding")
     assert coding["best_model"] == "a"  # 字母序最小，不受传入顺序影响
+
+
+# ---- 按难度等级聚合 ----
+
+def test_build_difficulty_summary_basic():
+    # 两个模型 × L1×2 + L2×1 + L3×1
+    m1 = _model("a", [
+        _t("t1", "c", 1.0, difficulty="L1"),
+        _t("t2", "c", 0.8, difficulty="L1"),
+        _t("t3", "c", 0.5, difficulty="L2"),
+        _t("t4", "c", 0.2, difficulty="L3"),
+    ])
+    m2 = _model("b", [
+        _t("t1", "c", 0.9, difficulty="L1"),
+        _t("t2", "c", 0.9, difficulty="L1"),
+        _t("t3", "c", 1.0, difficulty="L2"),
+        _t("t4", "c", 1.0, difficulty="L3"),
+    ])
+    rows = build_difficulty_summary([m1, m2])
+    # 顺序按 L1, L2, L3
+    assert [r["difficulty"] for r in rows] == ["L1", "L2", "L3"]
+
+    l1 = rows[0]
+    assert l1["task_count"] == 2
+    assert abs(l1["scores"]["a"] - 0.9) < 1e-9     # (1.0+0.8)/2
+    assert abs(l1["scores"]["b"] - 0.9) < 1e-9
+    assert abs(l1["totals"]["a"] - 1.8) < 1e-9
+    # 平局取字母序最小
+    assert l1["best_model"] == "a"
+    assert abs(l1["score_range"]) < 1e-9
+
+    l3 = rows[2]
+    assert l3["task_count"] == 1
+    assert l3["best_model"] == "b"
+    assert abs(l3["score_range"] - 0.8) < 1e-9     # 1.0 - 0.2
+
+
+def test_build_difficulty_summary_unknown_last():
+    # unknown 任务排在最后
+    m = _model("a", [
+        _t("t1", "c", 1.0, difficulty="L2"),
+        _t("t2", "c", 0.5, difficulty="unknown"),
+    ])
+    rows = build_difficulty_summary([m])
+    assert [r["difficulty"] for r in rows] == ["L2", "unknown"]
+
+
+def test_highest_difficulty_skips_unknown():
+    rows = build_difficulty_summary([_model("a", [
+        _t("t1", "c", 1.0, difficulty="L1"),
+        _t("t2", "c", 1.0, difficulty="L3"),
+        _t("t3", "c", 1.0, difficulty="unknown"),
+    ])])
+    assert highest_difficulty(rows) == "L3"
+
+
+def test_highest_difficulty_empty_or_all_unknown():
+    assert highest_difficulty([]) == ""
+    rows = build_difficulty_summary([_model("a", [
+        _t("t1", "c", 1.0, difficulty="unknown"),
+    ])])
+    assert highest_difficulty(rows) == ""
+
+
+def test_build_difficulty_summary_empty():
+    assert build_difficulty_summary([]) == []

@@ -1,8 +1,8 @@
 ---
 name: pinchbench-report-generator
-description: 分析 PinchBench 多模型评测结果，生成结构化对比报告。Use when 需要将一次或多次 PinchBench 评测的执行结果（含 transcripts）整理成评测报告、对比多个模型的得分与能力、或对某个目标模型做失分点深度分析时。读取评测结果目录，产出 Markdown 对比报告。
+description: 分析 PinchBench 多模型评测结果，生成结构化对比报告。Use when 需要将一次或多次 PinchBench 评测的执行结果（含 transcripts）整理成评测报告、对比多个模型的得分与能力、对某个目标模型做失分点深度分析、或按难度等级（L1/L2/L3/L4）维度对比模型表现时。读取评测结果目录，产出 Markdown 对比报告。
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   author: astronclaw
 ---
 
@@ -33,7 +33,9 @@ python skills/pinchbench-report-generator/scripts/report_cli.py collect \
   [--thresholds all_low=0.4,gap=0.2,min_others=0.8,absolute=0.8,strength_min=0.8,strength_gap=0.2,absolute_high=0.9,strength_top_n=12]
 ```
 
-产出 `collected_data.json`，含模型统计、任务矩阵、分类别汇总、`tasks_to_analyze`（待深度分析的**失分**任务）、`strengths_to_analyze`（待深度分析的**优势**任务，按领先幅度降序 top-N）。两者结构相同，均含 transcript/任务md 路径与入选原因。
+产出 `collected_data.json`，含模型统计、任务矩阵、分类别汇总、**难度等级汇总（difficulty_summary）**、`tasks_to_analyze`（待深度分析的**失分**任务）、`strengths_to_analyze`（待深度分析的**优势**任务，按领先幅度降序 top-N）。两者结构相同，均含 transcript/任务md 路径与入选原因。
+
+> 难度字段优先读结果 JSON 的 `frontmatter.difficulty`（评测器 ≥2.x 已写入）；旧版 JSON 缺失时自动从 `tasks_root/<task_id>.md` 的 frontmatter 兜底读取，再缺失则标 `unknown`。
 
 ### 阶段2：深度分析（LLM，由你执行）
 
@@ -43,6 +45,13 @@ python skills/pinchbench-report-generator/scripts/report_cli.py collect \
 2. 读 `task_md`（任务定义），提取 **Grading Criteria / Automated Checks / LLM Judge Rubric**，翻译成中文
 3. 参考 `references/agent-capability-dimensions.md`（20 个能力维度），为任务做能力归类
 4. 结合 breakdown + notes + transcript 行为，分析目标模型的失分点 / 得分亮点，以及对照模型为何不同
+
+读取 `difficulty_summary`（按 L1/L2/L3/L4 聚合的各模型得分均值与累计分），产出 `difficulty_analysis` 对象（4 个文字字段，任一缺省则跳过对应小节）：
+
+- `compare_findings`：解读对比表，重点写**哪一档极差最大**、**谁在哪一档掉队**、**与综合得分的关系**
+- `top_difficulty_analysis`：解读最高难度逐项表，指出区分度最高的任务及各模型胜负点
+- `lower_difficulty_loss_points`：低难度档（L1/L2）的典型失分点，每个失分模型一两条
+- `conclusion`：难度维度结论与改进路线（多模型才有意义；单模型可省）
 
 按入选原因区分分析角度：
 - `relative_weakness`：目标模型独有短板，重点对比目标 vs 对比模型的行为差异
@@ -64,6 +73,12 @@ python skills/pinchbench-report-generator/scripts/report_cli.py collect \
     "comparison_models": [{"model": "...", "score": 1.0, "why_succeeded": "短板:对比为何得分 / 优势:对比为何不及目标"}],
     "root_cause": "根本原因 / 制胜原因"
   }],
+  "difficulty_analysis": {
+    "compare_findings": "对 N.2 难度对比表的核心发现，3-5 条要点（markdown 列表）。重点：哪一档差距最大、谁在哪一档异常、与综合得分的关系",
+    "top_difficulty_analysis": "对 N.3 最高难度逐项表的解读：哪些任务区分度最高、各模型胜负点",
+    "lower_difficulty_loss_points": "L1/L2 等较低难度档位的典型失分点（每个失分模型给一两条）",
+    "conclusion": "难度维度的结论与改进建议（多模型才需要）"
+  },
   "target_model_weaknesses": [{
     "theme": "短板主题", "related_tasks": ["..."],
     "evidence": "证据", "comparison": "对比模型表现",
@@ -80,6 +95,8 @@ python skills/pinchbench-report-generator/scripts/report_cli.py collect \
   }]
 }
 ```
+
+`difficulty_analysis` 的 4 个文字字段任一缺省时，对应小节自动跳过；整个对象缺省时仅保留 N.1（标准）+ N.2（对比表）+ N.3（最高难度逐项）三张表（Python 静态/数据渲染）。
 
 `target_model_strengths` 与 `task_analysis` 中 `filter_reason ∈ {relative_strength, absolute_high}` 的项配合渲染优势章节；缺省（空/不写）时报告自动跳过优势章节。
 
@@ -98,9 +115,9 @@ python skills/pinchbench-report-generator/scripts/report_cli.py render \
 
 ## 报告结构
 
-参考 `astronclaw-result/core-suite/round-2/comparison_four_models_report.md`：
-整体排名 → Agent核心能力对比 → 分类别得分 → 各任务详细得分 → 目标模型**优势深度分析**（有 strengths 时）→ 目标模型短板深度分析 → Token效率 → 分项排名 → 改进建议。
-章节号按实际出现的章节动态生成（优势章节缺省时自动收缩编号）。单模型时跳过排名/能力对比/Token/分项排名章节。
+参考 `astronclaw-result/core-suite/round-2/comparison_four_models_report_with_difficulty.md`：
+整体排名 → Agent核心能力对比 → **难度等级维度分析（N.1 标准 + N.2 对比表 + N.3 最高难度逐项 + N.4 低难度失分点 + N.5 结论建议）** → 分类别得分 → 各任务详细得分 → 目标模型**优势深度分析**（有 strengths 时）→ 目标模型短板深度分析 → Token效率 → 分项排名 → 改进建议。
+章节号按实际出现的章节动态生成（优势/难度章节缺省时自动收缩编号）。单模型时跳过排名/能力对比/Token/分项排名章节，难度章节仅渲染标准与对比表。
 
 ## 目录结构
 

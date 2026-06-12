@@ -215,6 +215,16 @@ def render_report(data: Dict, analysis: Dict) -> str:
         if cap:
             add_section("Agent核心能力对比", cap)
 
+    # 难度等级维度分析（多模型放在排名/能力对比之后；单模型放在最前的数据章节）
+    if data.get("difficulty_summary"):
+        sec += 1
+        diff_md = render_difficulty_section(data, analysis, sec)
+        if diff_md:
+            parts.append(diff_md)
+            parts.append("")
+        else:
+            sec -= 1  # 渲染为空（极端情况），让出该编号
+
     add_section("分类别得分对比", render_category_table(data))
     add_section("各任务详细得分", render_task_detail_table(data, analysis))
 
@@ -290,3 +300,182 @@ def render_subrankings(data: Dict) -> str:
         best = _display(models, row["best_model"])
         lines.append(f"| {_sanitize_cell(row['category'])} | {best} | - |")
     return "\n".join(lines)
+
+
+# ---- 难度等级维度章节（3.1 - 3.5） ----
+
+# 难度分级标准（量化参考与典型场景）；与 task md 的 difficulty 字段对应
+_DIFFICULTY_STANDARD = [
+    ("L1", "单步执行，单工具调用", "1-3 步，1 个工具", "文件读取、简单查询、单文件生成"),
+    ("L2", "多步推理，工具组合", "4-10 步，2-3 个工具", "数据分析、日志提取、多文件操作"),
+    ("L3", "复杂规划，跨领域", "10-30 步，多工具链", "代码重构、深度研究、跨文件一致性"),
+    ("L4", "长程任务，跨系统/多Agent", "30+ 步，跨会话", "端到端项目、多Agent协作"),
+]
+
+
+def render_difficulty_standard(data: Dict, section_no: int) -> str:
+    """{section_no}.1 难度分级标准 + 实际数据中的难度分布。"""
+    rows = data.get("difficulty_summary", [])
+    lines = [
+        f"### {section_no}.1 难度分级标准",
+        "",
+        "PinchBench 采用 L1-L4 四级难度体系，综合评估任务的**预估执行步数**与"
+        "**预估涉及工具数**，取两者较高者对应的等级：",
+        "",
+        "| 等级 | 定义 | 量化参考 | 典型场景 |",
+        "|------|------|----------|----------|",
+    ]
+    for lvl, defn, scale, scenes in _DIFFICULTY_STANDARD:
+        lines.append(f"| **{lvl}** | {defn} | {scale} | {scenes} |")
+    if rows:
+        dist = "，".join(
+            f"**{r['difficulty']}×{r['task_count']}**" for r in rows
+            if r["difficulty"] != "unknown"
+        )
+        if dist:
+            lines.append("")
+            lines.append(f"本次评测难度分布：{dist}。")
+        unknown = next((r for r in rows if r["difficulty"] == "unknown"), None)
+        if unknown:
+            lines.append(
+                f"\n> 注：另有 {unknown['task_count']} 个任务未配置 difficulty 字段，"
+                f"在难度对比表中以 unknown 行展示。")
+    return "\n".join(lines)
+
+
+def render_difficulty_compare_table(data: Dict, section_no: int) -> str:
+    """{section_no}.2 各模型按难度等级的得分率对比表。"""
+    rows = data.get("difficulty_summary", [])
+    if not rows:
+        return ""
+    models = data["models"]
+    header = ("| 难度 | 任务数 | "
+              + " | ".join(_display(models, m["model"]) for m in models)
+              + " | 得分率极差 |")
+    sep = "|:----:|:------:|" + "|".join([":---:"] * len(models)) + "|:----------:|"
+    lines = [f"### {section_no}.2 各模型按难度等级的得分率对比", "", header, sep]
+
+    for r in rows:
+        d = r["difficulty"]
+        # 找到该难度下得分最高者，对应单元格加粗
+        max_score = max(r["scores"].values()) if r["scores"] else 0.0
+        cells = []
+        for m in models:
+            s = r["scores"].get(m["model"], 0.0)
+            tot = r["totals"].get(m["model"], 0.0)
+            txt = f"{fmt_pct(s)} ({tot:.2f}/{r['task_count']})"
+            cells.append(f"**{txt}**" if s == max_score and r["task_count"] > 0 else txt)
+        rng = fmt_pct(r["score_range"])
+        # 极差较大时(>=0.2)加粗，提醒区分度
+        rng_disp = f"**{rng}**" if r["score_range"] >= 0.2 else rng
+        lines.append(f"| **{d}** | {r['task_count']} | " + " | ".join(cells)
+                     + f" | {rng_disp} |")
+    return "\n".join(lines)
+
+
+def render_difficulty_top_detail(data: Dict, section_no: int) -> str:
+    """{section_no}.3 最高难度等级的逐项任务得分明细。"""
+    rows = data.get("difficulty_summary", [])
+    if not rows:
+        return ""
+    from score_calculator import highest_difficulty
+    top = highest_difficulty(rows)
+    if not top:
+        return ""
+
+    matrix = data.get("task_matrix", [])
+    top_tasks = [row for row in matrix if row.get("difficulty") == top]
+    if not top_tasks:
+        return ""
+
+    models = data["models"]
+    header = ("| 任务 | 类别 | "
+              + " | ".join(_display(models, m["model"]) for m in models) + " |")
+    sep = "|------|------|" + "|".join([":---:"] * len(models)) + "|"
+    lines = [f"### {section_no}.3 {top} 任务逐项得分明细（{len(top_tasks)} 个任务）",
+             "", header, sep]
+    for row in top_tasks:
+        # 行内最高分加粗，便于读者一眼识别该任务的最优模型
+        scores = [row["per_model"].get(m["model"], {}).get("score", 0.0)
+                  for m in models]
+        mx = max(scores) if scores else 0.0
+        cells = []
+        for s in scores:
+            cells.append(f"**{fmt_pct(s)}**" if s == mx and mx > 0 else fmt_pct(s))
+        lines.append(f"| {row['task_id']} | {row['category']} | "
+                     + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+def render_difficulty_section(data: Dict, analysis: Dict, section_no: int) -> str:
+    """难度等级维度分析章节。
+
+    Python 渲染 N.1/N.2/N.3 数据章节；N.4 典型失分点 / N.5 结论与建议
+    取自 analysis.difficulty_analysis（LLM 产出），缺省时跳过。
+    """
+    rows = data.get("difficulty_summary", [])
+    if not rows:
+        return ""
+    # 多模型才有对比意义；单模型时只展示标准 + 自身按难度得分
+    if data.get("is_single_model"):
+        # 单模型场景：仍保留章节，但只渲染标准与各等级自身得分
+        cn = _cn_num(section_no)
+        parts = [f"## {cn}、难度等级维度分析", ""]
+        parts.append(render_difficulty_standard(data, section_no))
+        parts.append("")
+        cmp_table = render_difficulty_compare_table(data, section_no)
+        if cmp_table:
+            parts.append(cmp_table)
+            parts.append("")
+        return "\n".join(parts).rstrip("\n")
+
+    cn = _cn_num(section_no)
+    parts = [f"## {cn}、难度等级维度分析", ""]
+
+    parts.append(render_difficulty_standard(data, section_no))
+    parts.append("")
+
+    cmp_table = render_difficulty_compare_table(data, section_no)
+    if cmp_table:
+        parts.append(cmp_table)
+        parts.append("")
+
+    da = analysis.get("difficulty_analysis", {}) if analysis else {}
+
+    # N.2 章节核心发现（LLM 产出，紧跟对比表）
+    findings = da.get("compare_findings", "")
+    if findings:
+        parts.append("**核心发现**：")
+        parts.append("")
+        parts.append(findings)
+        parts.append("")
+
+    detail = render_difficulty_top_detail(data, section_no)
+    if detail:
+        parts.append(detail)
+        parts.append("")
+        # N.3 章节分析（LLM 产出，紧跟逐项明细）
+        top_analysis = da.get("top_difficulty_analysis", "")
+        if top_analysis:
+            parts.append("**分析**：")
+            parts.append("")
+            parts.append(top_analysis)
+            parts.append("")
+
+    # N.4 L1/L2 典型失分点（LLM 产出）
+    low_loss = da.get("lower_difficulty_loss_points", "")
+    if low_loss:
+        parts.append(f"### {section_no}.4 低难度任务典型失分点")
+        parts.append("")
+        parts.append(low_loss)
+        parts.append("")
+
+    # N.5 结论与建议（LLM 产出）
+    conclusion = da.get("conclusion", "")
+    if conclusion:
+        parts.append(f"### {section_no}.5 难度维度结论与建议")
+        parts.append("")
+        parts.append(conclusion)
+        parts.append("")
+
+    return "\n".join(parts).rstrip("\n")

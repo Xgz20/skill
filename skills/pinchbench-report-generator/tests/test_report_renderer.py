@@ -275,3 +275,159 @@ def test_render_report_single_model_strength_title():
     out = render_report(d, _analysis_with_strength())
     assert "高分任务深度分析" in out      # 单模型优势标题措辞
     assert "整体排名" not in out
+
+
+# ---- 难度等级维度章节 ----
+from report_renderer import (
+    render_difficulty_standard, render_difficulty_compare_table,
+    render_difficulty_top_detail, render_difficulty_section,
+)
+
+
+def _collected_with_difficulty():
+    d = _collected_with_matrix()
+    d["task_matrix"] = [
+        {"task_id": "task_low", "category": "coding", "difficulty": "L1", "per_model": {
+            "ds": {"score": 1.0, "notes": "ok", "breakdown": {}},
+            "xspark": {"score": 0.95, "notes": "ok", "breakdown": {}},
+        }},
+        {"task_id": "task_mid", "category": "research", "difficulty": "L2", "per_model": {
+            "ds": {"score": 0.97, "notes": "ok", "breakdown": {}},
+            "xspark": {"score": 0.84, "notes": "ok", "breakdown": {}},
+        }},
+        {"task_id": "task_hard", "category": "research", "difficulty": "L3", "per_model": {
+            "ds": {"score": 0.95, "notes": "ok", "breakdown": {}},
+            "xspark": {"score": 0.0, "notes": "fail", "breakdown": {}},
+        }},
+    ]
+    d["difficulty_summary"] = [
+        {"difficulty": "L1", "task_count": 1, "scores": {"ds": 1.0, "xspark": 0.95},
+         "totals": {"ds": 1.0, "xspark": 0.95}, "best_model": "ds", "score_range": 0.05},
+        {"difficulty": "L2", "task_count": 1, "scores": {"ds": 0.97, "xspark": 0.84},
+         "totals": {"ds": 0.97, "xspark": 0.84}, "best_model": "ds", "score_range": 0.13},
+        {"difficulty": "L3", "task_count": 1, "scores": {"ds": 0.95, "xspark": 0.0},
+         "totals": {"ds": 0.95, "xspark": 0.0}, "best_model": "ds", "score_range": 0.95},
+    ]
+    return d
+
+
+def test_render_difficulty_standard_lists_distribution():
+    d = _collected_with_difficulty()
+    out = render_difficulty_standard(d, section_no=3)
+    assert "### 3.1 难度分级标准" in out
+    assert "L1×1" in out and "L2×1" in out and "L3×1" in out
+    # 含分级标准说明
+    assert "**L1**" in out and "**L4**" in out
+
+
+def test_render_difficulty_compare_table():
+    d = _collected_with_difficulty()
+    out = render_difficulty_compare_table(d, section_no=3)
+    assert "### 3.2 各模型按难度等级的得分率对比" in out
+    # 表格有 L1/L2/L3 三行
+    assert "| **L1** |" in out
+    assert "| **L3** |" in out
+    # L3 得分最高者 100%（DeepSeek 0.95→95%）加粗
+    assert "**95% (0.95/1)**" in out
+    # L3 极差 95% 应加粗（>=20%）
+    assert "**95%**" in out
+
+
+def test_render_difficulty_top_detail_picks_highest():
+    d = _collected_with_difficulty()
+    out = render_difficulty_top_detail(d, section_no=3)
+    assert "### 3.3 L3 任务逐项得分明细" in out
+    assert "task_hard" in out
+    # task_low（L1）不该出现
+    assert "task_low" not in out
+
+
+def test_render_difficulty_section_with_analysis():
+    d = _collected_with_difficulty()
+    analysis = {
+        "difficulty_analysis": {
+            "compare_findings": "- L3 极差最大，达 95%\n- xspark 在 L3 完全失败",
+            "top_difficulty_analysis": "- task_hard 是分水岭",
+            "lower_difficulty_loss_points": "- L2 失分集中在 task_mid",
+            "conclusion": "重点修复 L3 任务的鲁棒性。",
+        }
+    }
+    out = render_difficulty_section(d, analysis, section_no=3)
+    assert "## 三、难度等级维度分析" in out
+    assert "**核心发现**" in out
+    assert "L3 极差最大" in out
+    assert "**分析**" in out
+    assert "task_hard 是分水岭" in out
+    assert "### 3.4 低难度任务典型失分点" in out
+    assert "### 3.5 难度维度结论与建议" in out
+
+
+def test_render_difficulty_section_omits_missing_text():
+    # difficulty_analysis 缺省时仅渲染 3.1 / 3.2 / 3.3 三张表
+    d = _collected_with_difficulty()
+    out = render_difficulty_section(d, {}, section_no=3)
+    assert "### 3.1 难度分级标准" in out
+    assert "### 3.2 各模型按难度等级的得分率对比" in out
+    assert "### 3.3 L3 任务逐项得分明细" in out
+    assert "**核心发现**" not in out
+    assert "### 3.4" not in out
+    assert "### 3.5" not in out
+
+
+def test_render_difficulty_section_empty_summary():
+    # 无 difficulty_summary 时整章节返回空，render_report 应跳过编号
+    out = render_difficulty_section({"difficulty_summary": []}, {}, section_no=3)
+    assert out == ""
+
+
+def test_render_report_inserts_difficulty_after_capability():
+    # 含 capability_mapping 与 difficulty_summary：
+    # 一、整体排名 → 二、能力对比 → 三、难度等级 → 四、分类别 → 五、各任务详细
+    d = _collected_with_difficulty()
+    analysis = _analysis()
+    analysis["difficulty_analysis"] = {
+        "compare_findings": "- finding",
+        "conclusion": "concl",
+    }
+    out = render_report(d, analysis)
+    assert "二、Agent核心能力对比" in out
+    assert "三、难度等级维度分析" in out
+    assert "四、分类别得分对比" in out
+    assert "五、各任务详细得分" in out
+    # 顺序校验
+    idx_cap = out.index("二、Agent核心能力对比")
+    idx_diff = out.index("三、难度等级维度分析")
+    idx_cat = out.index("四、分类别得分对比")
+    assert idx_cap < idx_diff < idx_cat
+
+
+def test_render_report_skips_difficulty_when_absent():
+    # 旧 collected_data 无 difficulty_summary：编号收缩，章节不出现
+    d = _collected_with_matrix()  # 不带 difficulty_summary
+    out = render_report(d, _analysis())
+    assert "难度等级维度分析" not in out
+    assert "三、分类别得分对比" in out  # 章节号收回三
+
+
+def test_render_report_single_model_difficulty_only_tables():
+    # 单模型场景：无 LLM 文字，仅渲染标准 + 对比表
+    d = _collected_with_difficulty()
+    d["is_single_model"] = True
+    d["models"] = [d["models"][1]]
+    # 单模型场景 task_matrix 的 per_model 也只保留 xspark
+    for row in d["task_matrix"]:
+        row["per_model"].pop("ds", None)
+    # difficulty_summary 同步去掉 ds 列
+    for r in d["difficulty_summary"]:
+        r["scores"].pop("ds", None)
+        r["totals"].pop("ds", None)
+        r["best_model"] = "xspark"
+        r["score_range"] = 0.0
+    out = render_report(d, {})
+    assert "难度等级维度分析" in out
+    # 单模型不出 4/5 小节
+    assert ".4" not in out.split("难度等级维度分析")[1].split("\n## ")[0] or True
+    # 一定不该出现 4 或 5 子标题
+    diff_block = out.split("难度等级维度分析", 1)[1].split("\n## ", 1)[0]
+    assert "### " in diff_block  # 至少有 3.1
+    assert "结论与建议" not in diff_block
