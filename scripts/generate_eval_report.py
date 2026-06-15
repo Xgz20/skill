@@ -276,6 +276,22 @@ def find_result_files(root: Path) -> list[Path]:
     return sorted(p for p in root.rglob("*.json") if RESULT_FILE_PATTERN.match(p.name))
 
 
+def infer_result_root(files: list[Path]) -> Path:
+    """从结果文件推断评测结果根目录。
+
+    结果文件通常位于 <结果根>/<模型目录>/0xxx_<model>.json，
+    取各文件父目录的共同上层作为结果根；只有单个模型目录时取其父目录。
+    """
+    parents = {f.parent.resolve() for f in files}
+    if len(parents) == 1:
+        # 全部在同一模型目录下 → 结果根是它的父目录
+        return next(iter(parents)).parent
+    # 多个模型目录 → 取共同父目录
+    import os
+    common = Path(os.path.commonpath([str(p) for p in parents]))
+    return common
+
+
 def dedup_tasks(tasks: list[dict]) -> list[dict]:
     """按 task_id 去重，保留首条。
 
@@ -337,25 +353,34 @@ def fmt_pct(v: float | None) -> str:
 # --------------------------------------------------------------------------- #
 # transcript 读取
 # --------------------------------------------------------------------------- #
-def read_transcript(result_path: Path, run_id: str, task_id: str) -> str:
-    """读取 {run_id}_transcripts/{task_id}.jsonl 全文，超长截断。"""
-    candidates = []
+def read_transcript_raw(result_path: Path, run_id: str, task_id: str) -> str:
+    """读取 {run_id}_transcripts/{task_id}.jsonl 全文（不截断）。
+
+    找不到返回空串。供摘要解析使用——必须用未截断文本，
+    否则超长首行会被切断导致 JSONL 解析失败。
+    """
     base = result_path.parent
+    candidates = []
     if run_id:
         candidates.append(base / f"{run_id}_transcripts" / f"{task_id}.jsonl")
-    # 兜底：扫描同级所有 *_transcripts 目录
     candidates += list(base.glob(f"*_transcripts/{task_id}.jsonl"))
-
     for c in candidates:
         if c.exists():
             try:
-                text = c.read_text(encoding="utf-8", errors="replace")
+                return c.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
-            if len(text) > CELL_MAX_LEN:
-                text = text[:CELL_MAX_LEN] + "\n...（已截断）"
-            return text
-    return "无 transcript 记录"
+    return ""
+
+
+def read_transcript(result_path: Path, run_id: str, task_id: str) -> str:
+    """读取 transcript 全文，超长截断（供 Excel「实际结果」列）。"""
+    text = read_transcript_raw(result_path, run_id, task_id)
+    if not text:
+        return "无 transcript 记录"
+    if len(text) > CELL_MAX_LEN:
+        text = text[:CELL_MAX_LEN] + "\n...（已截断）"
+    return text
 
 
 def format_breakdown(grading: dict) -> str:
@@ -377,6 +402,110 @@ def format_breakdown(grading: dict) -> str:
             lines.append(f"  {k}: {v}")
         blocks.append("\n".join(lines))
     return "\n".join(blocks)
+
+
+def format_lost_points(grading: dict) -> str:
+    """组装失分点（纯规则提取，按轮次分别列）。
+
+    每轮包含两部分：
+      - 失分检查点：breakdown 中得分 < 1.0 的项（key=得分），区分完全失分与部分失分
+      - 裁判判词：该轮 grading_type 为 llm_judge/hybrid 且 notes 非空时附上
+
+    满分用例（各轮均无失分）整体返回「无失分」。
+    """
+    runs = grading.get("runs", []) or []
+    blocks = []
+    any_loss = False
+
+    for i, run in enumerate(runs, 1):
+        score = run.get("score", 0.0)
+        bd = run.get("breakdown", {}) or {}
+        gtype = run.get("grading_type", "")
+        notes = (run.get("notes") or "").strip()
+
+        zero = [k for k, v in bd.items() if v == 0.0]
+        partial = [(k, v) for k, v in bd.items() if 0.0 < v < 1.0]
+
+        lines = [f"第{i}轮 (score={score}):"]
+        if zero:
+            lines.append("  完全失分: " + ", ".join(zero))
+        if partial:
+            lines.append("  部分失分: " + ", ".join(f"{k}={v}" for k, v in partial))
+        if not zero and not partial:
+            lines.append("  本轮无失分")
+        else:
+            any_loss = True
+        # 裁判判词（仅 llm_judge / hybrid）
+        if gtype in ("llm_judge", "hybrid") and notes:
+            lines.append(f"  裁判: {notes}")
+        blocks.append("\n".join(lines))
+
+    if not any_loss:
+        return "无失分"
+    return "\n".join(blocks)
+
+
+def summarize_transcript(text: str, max_len: int = 6000) -> str:
+    """为 LLM 分析压缩 transcript：保留 assistant 文本与 toolCall/toolResult 关键片段。
+
+    transcript 是 JSONL（每行一个事件）。优先抽取与模型行为相关的事件，
+    丢弃 session/model_change/bootstrap 等噪声，最后整体截断到 max_len。
+    """
+    if not text or text == "无 transcript 记录":
+        return text or ""
+
+    snippets: list[str] = []
+    errors: list[str] = []  # 兜底：prompt-error 等异常事件
+    for line in text.split("\n"):
+        line = line.strip()
+        if not line or not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        etype = ev.get("type")
+        # 异常事件兜底（运行失败、trajectory schema 无 message 时仍能给出线索）
+        if etype == "custom" and "error" in str(ev.get("customType", "")).lower():
+            data = ev.get("data", {})
+            errors.append(f"[运行错误] {ev.get('customType')}: {json.dumps(data, ensure_ascii=False)[:300]}")
+            continue
+        if etype != "message":
+            continue
+        msg = ev.get("message", {}) or {}
+        role = msg.get("role", "")
+        content = msg.get("content", [])
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            ptype = part.get("type")
+            if ptype == "text" and part.get("text", "").strip():
+                snippets.append(f"[{role}] {part['text'].strip()}")
+            elif ptype == "thinking" and part.get("thinking", "").strip():
+                snippets.append(f"[{role}:思考] {part['thinking'].strip()}")
+            elif ptype == "toolCall":
+                args = json.dumps(part.get("arguments", {}), ensure_ascii=False)
+                snippets.append(f"[工具调用] {part.get('name', '')}({args[:500]})")
+        if role == "toolResult":
+            txts = [
+                p.get("text", "") for p in content
+                if isinstance(p, dict) and p.get("type") == "text"
+            ]
+            joined = " ".join(t for t in txts if t).strip()
+            if joined:
+                err = "(错误)" if msg.get("isError") else ""
+                snippets.append(f"[工具结果{err}] {joined[:500]}")
+
+    if not snippets and errors:
+        snippets = errors
+    result = "\n".join(snippets)
+    if len(result) > max_len:
+        result = result[:max_len] + "\n...（摘要已截断）"
+    # 仍为空（如 trajectory schema 只有元数据事件）→ 回退原始文本截断
+    return result or text[:max_len]
+
 
 
 # --------------------------------------------------------------------------- #
@@ -724,7 +853,13 @@ def write_diff_matrix_sheet(wb, models):
 # --------------------------------------------------------------------------- #
 # Sheet 8..: 各模型评分详情
 # --------------------------------------------------------------------------- #
-def write_score_detail_sheet(wb, model, metas, task_order):
+def write_score_detail_sheet(wb, model, metas, task_order, analysis=None):
+    """写入单个模型的评分详情。
+
+    analysis: {"model::task_id": {"result_analysis": str, "root_cause": str}}
+              用于回填「结果分析」「根因分析」两列；为 None 或缺项时留空。
+    """
+    analysis = analysis or {}
     # Sheet 名长度上限 31；模型名过长时截断
     name = f"评分详情_{model.model}"
     ws = wb.create_sheet(name[:31])
@@ -732,7 +867,7 @@ def write_score_detail_sheet(wb, model, metas, task_order):
     headers = [
         "场景大类", "场景分组(S1~S8)", "子场景", "用例ID", "用例名称", "难度等级",
         "输入(Prompt)", "预期行为", "评分标准", "实际结果", "得分",
-        "检查点得分明细", "失分点", "根因分析",
+        "检查点得分明细", "失分点", "结果分析", "根因分析",
     ]
     ws.append(headers)
     style_header_row(ws, 1, len(headers))
@@ -751,21 +886,26 @@ def write_score_detail_sheet(wb, model, metas, task_order):
         group = SCENE_GROUP.get(meta.scene_en, "")
         transcript = read_transcript(model.path, model.run_id, tid)
         breakdown = format_breakdown(grading)
+        lost_points = format_lost_points(grading)
+
+        ana = analysis.get(f"{model.model}::{tid}", {})
+        result_analysis = ana.get("result_analysis") or None
+        root_cause = ana.get("root_cause") or None
 
         row = [
             cat_cell, group, meta.sub_scene_zh, tid, meta.name_zh, meta.difficulty,
             meta.prompt, meta.expected, meta.criteria, transcript,
             round(float(grading.get("mean", 0.0)), 3), breakdown,
-            None, None,  # 失分点 / 根因分析：留空
+            lost_points, result_analysis, root_cause,
         ]
         ws.append(row)
         r = ws.max_row
-        for col in [7, 8, 9, 10, 12]:  # 长文本列换行
+        for col in [7, 8, 9, 10, 12, 13, 14, 15]:  # 长文本列换行
             ws.cell(row=r, column=col).alignment = WRAP_TOP
 
     widths = {
         1: 22, 2: 16, 3: 22, 4: 30, 5: 22, 6: 10,
-        7: 45, 8: 45, 9: 40, 10: 60, 11: 8, 12: 40, 13: 30, 14: 30,
+        7: 45, 8: 45, 9: 40, 10: 60, 11: 8, 12: 40, 13: 45, 14: 45, 15: 40,
     }
     for col, w in widths.items():
         ws.column_dimensions[get_column_letter(col)].width = w
@@ -783,7 +923,7 @@ def fmt_timestamp(ts) -> str:
 # --------------------------------------------------------------------------- #
 # 构建报告
 # --------------------------------------------------------------------------- #
-def build_report(models, metas, project_root) -> openpyxl.Workbook:
+def build_report(models, metas, project_root, analysis=None) -> openpyxl.Workbook:
     task_order = build_task_order(project_root, models)
 
     wb = openpyxl.Workbook()
@@ -795,8 +935,62 @@ def build_report(models, metas, project_root) -> openpyxl.Workbook:
     write_difficulty_sheet(wb, models, metas, task_order)
     write_diff_matrix_sheet(wb, models)
     for m in models:
-        write_score_detail_sheet(wb, m, metas, task_order)
+        write_score_detail_sheet(wb, m, metas, task_order, analysis)
     return wb
+
+
+def build_analysis_input(models, metas, task_order) -> list[dict]:
+    """构造「待 LLM 分析清单」：仅失分用例（mean < 1.0）。"""
+    items = []
+    for m in models:
+        task_by_id = {t["task_id"]: t for t in m.tasks if t.get("task_id")}
+        for tid in task_order:
+            task = task_by_id.get(tid)
+            if task is None:
+                continue
+            grading = task.get("grading", {}) or {}
+            mean = float(grading.get("mean", 0.0))
+            if mean >= 1.0:
+                continue  # 满分用例不需分析
+            meta = metas.get(tid) or TaskMeta()
+            transcript_raw = read_transcript_raw(m.path, m.run_id, tid)
+            items.append({
+                "key": f"{m.model}::{tid}",
+                "model": m.model,
+                "task_id": tid,
+                "task_name_zh": meta.name_zh,
+                "category_zh": bilingual(
+                    CATEGORY_ZH.get(meta.category_en, meta.category_en), meta.category_en
+                ),
+                "difficulty": meta.difficulty,
+                "prompt_zh": meta.prompt,
+                "expected_zh": meta.expected,
+                "criteria_zh": meta.criteria,
+                "score": round(mean, 3),
+                "lost_points": format_lost_points(grading),
+                "transcript_excerpt": summarize_transcript(transcript_raw),
+                "result_analysis": "",
+                "root_cause": "",
+            })
+    return items
+
+
+def load_analysis(path: Path) -> dict:
+    """读取已填写的分析 JSON，返回 {key: {result_analysis, root_cause}}。"""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"警告：分析文件读取失败，将忽略: {path} -> {e}", file=sys.stderr)
+        return {}
+    out = {}
+    for it in data.get("items", []):
+        key = it.get("key")
+        if key:
+            out[key] = {
+                "result_analysis": (it.get("result_analysis") or "").strip(),
+                "root_cause": (it.get("root_cause") or "").strip(),
+            }
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -812,7 +1006,11 @@ def main():
     )
     parser.add_argument(
         "-o", "--output-dir", type=str, default=None,
-        help="输出目录，默认 ./output/report",
+        help="Excel 输出目录，默认 <结果根>/report-workspace/output（结果根从 -d 推断）",
+    )
+    parser.add_argument(
+        "--analysis", type=str, default=None,
+        help="已填写的分析 JSON 路径，用于回填「结果分析」「根因分析」两列",
     )
     args = parser.parse_args()
 
@@ -859,10 +1057,20 @@ def main():
         metas = load_task_meta(project_root)
         print(f"已加载 {len(metas)} 个用例的中文元数据")
 
-    # 构建并保存
-    wb = build_report(models, metas, project_root)
+    # 推断评测结果根目录：所有结果文件目录的共同父目录
+    result_root = infer_result_root(all_files)
+    print(f"评测结果根目录: {result_root}")
 
-    output_dir = Path(args.output_dir) if args.output_dir else Path.cwd() / "output" / "report"
+    # 读取分析回填（若提供）
+    analysis = load_analysis(Path(args.analysis)) if args.analysis else None
+    if analysis:
+        print(f"已加载分析回填 {len(analysis)} 条")
+
+    # 构建报告
+    wb = build_report(models, metas, project_root, analysis)
+
+    # 输出位置：Excel → <结果根>/report-workspace/output（-o 可覆盖）；JSON → <结果根>/report-workspace
+    output_dir = Path(args.output_dir) if args.output_dir else result_root / "report-workspace" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = output_dir / f"report_{len(models)}models_{timestamp}.xlsx"
@@ -870,6 +1078,24 @@ def main():
     print(f"✓ 报告已生成: {output_path}")
     print(f"  - 模型数: {len(models)}")
     print(f"  - Sheet 数: {len(wb.sheetnames)} ({', '.join(wb.sheetnames)})")
+
+    # 导出待分析清单（仅在未提供 --analysis 时，即首轮生成）
+    if not args.analysis:
+        task_order = build_task_order(project_root, models)
+        items = build_analysis_input(models, metas, task_order)
+        ws_dir = result_root / "report-workspace"
+        ws_dir.mkdir(parents=True, exist_ok=True)
+        ana_path = ws_dir / f"report_{len(models)}models_{timestamp}_analysis_input.json"
+        ana_path.write_text(
+            json.dumps(
+                {"report_file": output_path.name, "items": items},
+                ensure_ascii=False, indent=2,
+            ),
+            encoding="utf-8",
+        )
+        print(f"✓ 待分析清单已导出: {ana_path}")
+        print(f"  - 失分用例数: {len(items)}")
+        print("  - 填写 result_analysis/root_cause 后，用 --analysis 重跑以回填")
 
 
 if __name__ == "__main__":
