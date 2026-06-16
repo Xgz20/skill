@@ -120,7 +120,9 @@ def extract_failed_tasks(result_json: Path, threshold: float, tasks_dir: Path = 
             "score_pct": round(avg_score * 100, 1),
             "min_score_pct": round(min_score * 100, 1),
             "task_file": task_file,
-            "grading_runs": all_runs_detail,  # 所有轮次的详情
+            "grading_detail": {
+                "grading_runs": all_runs_detail,  # 嵌套结构：与 simplify_task / workflow_template.js 对齐
+            },
             "transcript": transcript_path,
             "transcript_kb": round(Path(transcript_path).stat().st_size / 1024, 1)
                               if transcript_path and Path(transcript_path).exists() else 0,
