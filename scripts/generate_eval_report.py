@@ -975,60 +975,173 @@ def build_analysis_input(models, metas, task_order) -> list[dict]:
     return items
 
 
-def load_analysis(path: Path) -> dict:
-    """读取已填写的分析 JSON，返回 {key: {result_analysis, root_cause}}。"""
+def _infer_model_from_filename(path: Path, model_ids: list[str]) -> str | None:
+    """从分析文件名推断模型 id。
+
+    兼容 low-score-analysis Skill 的命名 analysis_<model>[-后缀].json，
+    在文件名（去扩展名）中查找作为子串出现的、最长的已加载模型 id。
+    """
+    stem = path.stem  # 如 analysis_xsparkx2flash-530
+    matched = [m for m in model_ids if m and m in stem]
+    if not matched:
+        return None
+    # 取最长匹配，避免 a 模型 id 是 b 模型 id 子串时误匹配
+    return max(matched, key=len)
+
+
+def load_analysis(
+    path: Path,
+    models: list["ModelResult"] | None = None,
+    forced_model: str | None = None,
+) -> dict:
+    """读取已填写的分析 JSON，返回 {key: {result_analysis, root_cause}}。
+
+    支持两种输入格式：
+    1. 本脚本首轮导出的清单：{"items": [{"key": "<模型>::<task_id>", "result_analysis", "root_cause"}]}
+    2. low-score-analysis Skill 产出：{task_id: {result_analysis, root_cause_analysis}}
+       该格式无模型维度，模型 id 优先取 forced_model（来自 MODEL=PATH 显式绑定），
+       否则从文件名推断（需能匹配到已加载的某个模型）。
+    """
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as e:
         print(f"警告：分析文件读取失败，将忽略: {path} -> {e}", file=sys.stderr)
         return {}
+
     out = {}
-    for it in data.get("items", []):
-        key = it.get("key")
-        if key:
-            out[key] = {
-                "result_analysis": (it.get("result_analysis") or "").strip(),
-                "root_cause": (it.get("root_cause") or "").strip(),
+
+    # 格式 1：标准 items 清单（self.model::task_id 自带模型维度，forced_model 不参与）
+    if isinstance(data, dict) and isinstance(data.get("items"), list):
+        for it in data["items"]:
+            key = it.get("key")
+            if key:
+                out[key] = {
+                    "result_analysis": (it.get("result_analysis") or "").strip(),
+                    "root_cause": (it.get("root_cause") or "").strip(),
+                }
+        return out
+
+    # 格式 2：low-score-analysis Skill 的 {task_id: {...}} 字典
+    if isinstance(data, dict):
+        loaded_ids = [m.model for m in models] if models else []
+        if forced_model:
+            if loaded_ids and forced_model not in loaded_ids:
+                print(
+                    f"警告：--analysis 显式指定模型 {forced_model} 不在已加载模型 "
+                    f"{loaded_ids} 中，将忽略 {path.name}",
+                    file=sys.stderr,
+                )
+                return out
+            model = forced_model
+            print(f"分析文件 {path.name} 显式绑定模型: {model}")
+        else:
+            model = _infer_model_from_filename(path, loaded_ids)
+            if model is None:
+                print(
+                    f"警告：分析文件为 task_id 字典格式，但无法从文件名 {path.name} "
+                    f"匹配到已加载模型 {loaded_ids}，将忽略回填",
+                    file=sys.stderr,
+                )
+                return out
+            print(f"分析文件 {path.name} 按 task_id 字典格式解析，回填到模型: {model}")
+        for tid, ana in data.items():
+            if not isinstance(ana, dict):
+                continue
+            out[f"{model}::{tid}"] = {
+                "result_analysis": (ana.get("result_analysis") or "").strip(),
+                # Skill 字段名为 root_cause_analysis，兼容 root_cause
+                "root_cause": (
+                    ana.get("root_cause_analysis") or ana.get("root_cause") or ""
+                ).strip(),
             }
+        return out
+
+    print(f"警告：无法识别的分析文件格式，将忽略: {path}", file=sys.stderr)
     return out
 
 
 # --------------------------------------------------------------------------- #
 # 主流程
 # --------------------------------------------------------------------------- #
-def main():
-    parser = argparse.ArgumentParser(
-        description="PinchBench 评测报告汇总（中文整合版）"
-    )
-    parser.add_argument(
-        "-d", "--dir", type=str, nargs="+", required=True,
-        help="一个或多个结果目录，递归扫描 0xxx_<模型id>.json 文件",
-    )
-    parser.add_argument(
-        "-o", "--output-dir", type=str, default=None,
-        help="Excel 输出目录，默认 <结果根>/report-workspace/output（结果根从 -d 推断）",
-    )
-    parser.add_argument(
-        "--analysis", type=str, default=None,
-        help="已填写的分析 JSON 路径，用于回填「结果分析」「根因分析」两列",
-    )
-    args = parser.parse_args()
+def collect_result_files(args) -> tuple[list[Path], Path | None]:
+    """根据 --result-root / -d 收集结果文件。
 
-    # 收集结果文件
-    all_files: list[Path] = []
+    Returns:
+        (结果文件列表, 显式结果根)。
+        --result-root 模式下，结果根直接已知；-d 模式返回 None，由 infer_result_root 推断。
+    """
+    if args.result_root:
+        root = Path(args.result_root)
+        if not root.is_dir():
+            sys.exit(f"--result-root 不是目录: {root}")
+        all_files = find_result_files(root)
+        if not all_files:
+            sys.exit(f"--result-root 下未找到符合命名规则（0xxx_<模型id>.json）的结果文件: {root}")
+        if args.models:
+            wanted = set(args.models)
+            kept = [f for f in all_files if f.parent.name in wanted]
+            dropped_dirs = sorted({f.parent.name for f in all_files if f.parent.name not in wanted})
+            missed = sorted(wanted - {f.parent.name for f in all_files})
+            if missed:
+                print(
+                    f"警告：--models 中以下名称未在 {root} 下找到对应子目录: {missed}",
+                    file=sys.stderr,
+                )
+            if not kept:
+                sys.exit(f"--models {sorted(wanted)} 在 {root} 下未匹配到任何模型子目录")
+            print(
+                f"在 {root} 下找到 {len(all_files)} 个结果文件，"
+                f"按 --models 过滤后保留 {len(kept)} 个（丢弃子目录: {dropped_dirs}）"
+            )
+            return kept, root.resolve()
+        print(f"在 {root} 下找到 {len(all_files)} 个结果文件")
+        return all_files, root.resolve()
+
+    # 旧用法：-d
+    files: list[Path] = []
     for d in args.dir:
         dp = Path(d)
         if not dp.is_dir():
             print(f"警告：不是目录，跳过: {dp}", file=sys.stderr)
             continue
-        files = find_result_files(dp)
-        if not files:
+        sub = find_result_files(dp)
+        if not sub:
             print(f"警告：未找到符合命名规则的结果文件: {dp}", file=sys.stderr)
             continue
-        print(f"在 {dp} 下找到 {len(files)} 个结果文件")
-        all_files.extend(files)
+        print(f"在 {dp} 下找到 {len(sub)} 个结果文件")
+        files.extend(sub)
+    return sorted(set(files)), None
 
-    all_files = sorted(set(all_files))
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="PinchBench 评测报告汇总（中文整合版）"
+    )
+    src_group = parser.add_mutually_exclusive_group(required=True)
+    src_group.add_argument(
+        "-d", "--dir", type=str, nargs="+",
+        help="一个或多个结果目录，递归扫描 0xxx_<模型id>.json 文件。与 --result-root 互斥",
+    )
+    src_group.add_argument(
+        "--result-root", type=str,
+        help="评测结果根目录，自动扫描其下所有子目录中的 0xxx_<模型id>.json。与 -d 互斥",
+    )
+    parser.add_argument(
+        "--models", type=str, nargs="+", default=None,
+        help="仅 --result-root 模式生效：按子目录名精确过滤要纳入的模型，未指定则全收",
+    )
+    parser.add_argument(
+        "-o", "--output-dir", type=str, default=None,
+        help="Excel 输出目录，默认 <结果根>/report-workspace/output（结果根从 --result-root 取或从 -d 推断）",
+    )
+    parser.add_argument(
+        "--analysis", type=str, nargs="+", default=None, metavar="[MODEL=]PATH",
+        help="一个或多个已填写的分析 JSON 路径，可写 MODEL=PATH 显式绑定模型；裸路径则从文件名推断模型",
+    )
+    args = parser.parse_args()
+
+    # 收集结果文件 + 计算（或后续推断）结果根
+    all_files, explicit_root = collect_result_files(args)
     if not all_files:
         sys.exit("未找到任何符合命名规则（0xxx_<模型id>.json）的结果文件")
 
@@ -1057,14 +1170,36 @@ def main():
         metas = load_task_meta(project_root)
         print(f"已加载 {len(metas)} 个用例的中文元数据")
 
-    # 推断评测结果根目录：所有结果文件目录的共同父目录
-    result_root = infer_result_root(all_files)
+    # 评测结果根目录：--result-root 直接使用；否则由结果文件推断
+    result_root = explicit_root if explicit_root is not None else infer_result_root(all_files)
     print(f"评测结果根目录: {result_root}")
 
-    # 读取分析回填（若提供）
-    analysis = load_analysis(Path(args.analysis)) if args.analysis else None
-    if analysis:
-        print(f"已加载分析回填 {len(analysis)} 条")
+    # 读取分析回填（若提供）：支持多个文件 + MODEL=PATH 显式绑定
+    analysis: dict | None = None
+    if args.analysis:
+        analysis = {}
+        for spec in args.analysis:
+            if "=" in spec:
+                m, p = spec.split("=", 1)
+                m = m.strip()
+                p = p.strip()
+                if not m or not p:
+                    print(f"警告：--analysis 项格式应为 MODEL=PATH，跳过: {spec}", file=sys.stderr)
+                    continue
+                partial = load_analysis(Path(p), models, forced_model=m)
+            else:
+                partial = load_analysis(Path(spec), models)
+            if not partial:
+                continue
+            dup = set(analysis) & set(partial)
+            if dup:
+                sample = sorted(dup)[:3]
+                print(
+                    f"警告：分析键冲突 {len(dup)} 条，后者覆盖前者（样例 {sample}）",
+                    file=sys.stderr,
+                )
+            analysis.update(partial)
+        print(f"已加载分析回填合计 {len(analysis)} 条（来自 {len(args.analysis)} 个文件）")
 
     # 构建报告
     wb = build_report(models, metas, project_root, analysis)
