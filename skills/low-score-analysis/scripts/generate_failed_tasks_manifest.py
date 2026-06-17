@@ -148,15 +148,28 @@ def extract_failed_tasks(result_json: Path, threshold: float, tasks_dir: Path = 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="生成低分任务清单 JSON（低分任务根因分析 Skill 的中间过程解析脚本 - PinchBench 版）")
+        description="生成低分任务清单 JSON（低分任务根因分析 Skill 的中间过程解析脚本 - PinchBench 版）",
+        epilog="""
+使用示例：
+  # 多模型根目录模式（需要指定 --model）
+  python3 generate_failed_tasks_manifest.py \\
+    --result-root /path/to/results \\
+    --model xsparkx2flash-530
+
+  # 单模型目录模式（直接指定模型目录，--model 可省略）
+  python3 generate_failed_tasks_manifest.py \\
+    --result-root /path/to/results/xsparkx2flash-530
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--result-root", required=True,
-                        help="评测结果根目录（其下含各模型子目录）")
-    parser.add_argument("--model", required=True,
-                        help="模型目录名，如 xsparkx2flash-530")
+                        help="评测结果根目录（可以是包含多个模型子目录的根目录，也可以直接是某个模型目录）")
+    parser.add_argument("--model", default=None,
+                        help="模型目录名（可选）。多模型根目录模式时必须指定；单模型目录模式时可省略")
     parser.add_argument("--threshold", type=float, default=60,
                         help="低分阈值（百分制），任意一轮 score 低于此值的任务列入清单，默认 60")
     parser.add_argument("--workspace-dir", default=None,
-                        help="输出工作区目录，默认 <result-root>/report-workspace")
+                        help="输出工作区目录（可选）。未指定时，多模型模式默认 <result-root>/report-workspace，单模型模式默认 <model-dir>/report-workspace")
     parser.add_argument("--output", default=None,
                         help="输出 JSON 路径，默认 <workspace-dir>/_failed_tasks_<model>.json")
     parser.add_argument("--tasks-dir", default=None,
@@ -164,10 +177,29 @@ def main():
     args = parser.parse_args()
 
     result_root = Path(args.result_root).resolve()
-    model_dir = result_root / args.model
 
-    if not model_dir.exists():
-        sys.exit(f"错误: 模型目录不存在: {model_dir}")
+    # 智能判断：如果 result_root 本身就包含评测结果 JSON，说明用户直接指定了模型目录
+    # 这种情况下，workspace 应该在模型目录内，而不是在父目录
+    result_json_in_root = find_result_json(result_root)
+    if result_json_in_root:
+        # 场景：用户直接指定模型目录
+        # 例如：--result-root /path/to/results/debug-001
+        # 此时 result_root 本身就是模型目录
+        model_dir = result_root
+        # workspace 默认在模型目录内（除非用户显式指定 --workspace-dir）
+        default_workspace = result_root / "report-workspace"
+        print(f"检测到单模型目录模式: {result_root.name}")
+        print(f"忽略 --model 参数（如果提供）")
+    else:
+        # 场景：多模型根目录
+        # 例如：--result-root /path/to/results，--model debug-001
+        # 此时 model_dir = result_root / model
+        model_dir = result_root / args.model
+        if not model_dir.exists():
+            sys.exit(f"错误: 模型目录不存在: {model_dir}")
+        # workspace 默认在根目录下（与所有模型目录平级）
+        default_workspace = result_root / "report-workspace"
+        print(f"检测到多模型根目录模式")
 
     # 查找评测结果 JSON
     result_json = find_result_json(model_dir)
@@ -176,11 +208,16 @@ def main():
 
     print(f"使用评测结果文件: {result_json.name}")
 
-    # 工作区目录：默认 result-root / report-workspace
-    workspace = Path(args.workspace_dir).resolve() if args.workspace_dir \
-        else result_root / "report-workspace"
+    # 工作区目录：显式指定 > 自动判断的默认位置
+    workspace = Path(args.workspace_dir).resolve() if args.workspace_dir else default_workspace
+
+    # 输出文件名：优先使用实际模型名，回退到目录名
+    with open(result_json, encoding="utf-8") as f_temp:
+        data_temp = json.load(f_temp)
+    model_name_for_file = data_temp.get("model", "") or args.model or model_dir.name
+
     out = Path(args.output).resolve() if args.output \
-        else workspace / f"_failed_tasks_{args.model}.json"
+        else workspace / f"_failed_tasks_{model_name_for_file}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
 
     tasks_dir = find_tasks_dir(args.tasks_dir)
@@ -193,11 +230,17 @@ def main():
     with open(result_json, encoding="utf-8") as f:
         data = json.load(f)
     total_tasks = len(set(t["task_id"] for t in data.get("tasks", [])))
+    model_name = data.get("model", "")  # 从 JSON 中读取真实模型名
 
     with open(out, "w", encoding="utf-8") as f:
         json.dump(bundles, f, ensure_ascii=False, indent=2)
 
-    print(f"\n模型: {args.model}")
+    # 输出统计信息
+    print(f"\n模型目录: {model_dir}")
+    print(f"实际模型名: {model_name}")
+    if args.model and model_name != args.model:
+        print(f"  ⚠️  注意：--model 参数 '{args.model}' 与实际模型名不同")
+    print(f"工作区目录: {workspace}")
     print(f"低分任务数（任意轮<{args.threshold}%）: {len(bundles)} / {total_tasks}")
     print(f"任务文件目录: {tasks_dir or '(未定位，task_file 留空)'}")
     print(f"清单已写入: {out}")
@@ -211,6 +254,12 @@ def main():
 
     # 末行输出清单路径，便于上层脚本/Skill 捕获
     print(f"\nMANIFEST_PATH={out}")
+
+    # 💡 提示正确的分析文件命名（用于后续回填 Excel）
+    if model_name:
+        print(f"\n💡 提示：如需回填 Excel 报告，请确保分析文件名包含模型名 '{model_name}'")
+        print(f"   建议命名: analysis_{model_name}.json")
+        print(f"   分析文件将保存到: {workspace / f'analysis_{model_name}.json'}")
 
 
 if __name__ == "__main__":

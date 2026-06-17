@@ -17,31 +17,75 @@ description: Use when the user wants to analyze why a model scored low on PinchB
 
 ## 输入
 
-- **评测结果根目录**（`--result-root`）：例如 `astronclaw-result/all-suite/round-3`，其下含各模型子目录，每个子目录有 `summary.json` 和每个任务的 `<task_id>/transcript.jsonl`
-- **模型信息**（`--model`）：模型目录名，如 `xsparkx2flash-530`
+- **评测结果根目录**（`--result-root`）：
+  - **单模型模式**：直接指定模型目录，如 `/path/to/results/xsparkx2flash-530`
+  - **多模型模式**：指定包含多个模型子目录的根目录，如 `/path/to/results`
+- **模型信息**（`--model`）：多模型模式时必须指定，单模型模式可省略
 - **低分阈值**（`--threshold`，百分制，默认 60）：`score` 低于此值（满分为 1.0）的任务列入分析
+
+脚本会**自动检测目录模式**：
+- 如果 `--result-root` 本身包含评测结果 JSON → 单模型模式，workspace 在模型目录内
+- 如果 `--result-root` 下有子目录包含 JSON → 多模型模式，workspace 在根目录
 
 ## 输出
 
-均位于 **`<result-root>/report-workspace/`**：
+**单模型模式**（workspace 在模型目录内）：
+```
+model-dir/
+  └── report-workspace/
+      ├── _failed_tasks_<model>.json    ← 低分任务清单
+      └── analysis_<model>.json         ← 根因分析结果
+```
 
-1. **中间过程清单**：`_failed_tasks_<model>.json` —— 低分任务列表及其 grading/transcript/任务文件路径
-2. **根因分析结果**：`analysis_<model>.json` —— `{task_id: {result_analysis, root_cause_analysis}}`
+**多模型模式**（workspace 与模型目录平级）：
+```
+results-root/
+  ├── model-1/
+  ├── model-2/
+  └── report-workspace/
+      ├── _failed_tasks_model1.json
+      ├── _failed_tasks_model2.json
+      ├── analysis_model1.json
+      └── analysis_model2.json
+```
 
 ## 执行流程
 
 ### 第 1 步：生成任务清单
 
-运行本 Skill 自带脚本解析评测结果，筛出低分任务：
+运行本 Skill 自带脚本解析评测结果，筛出低分任务。
 
+**单模型目录模式**（推荐）：
 ```bash
 python3 <skill_dir>/scripts/generate_failed_tasks_manifest.py \
-  --result-root <评测结果根目录> \
-  --model <模型名> \
+  --result-root <模型目录路径> \
+  --threshold 60
+
+# 示例
+python3 .claude/skills/low-score-analysis/scripts/generate_failed_tasks_manifest.py \
+  --result-root results-astronclaw-local/xsparkx2flash-530 \
   --threshold 60
 ```
 
-脚本输出 `<result-root>/report-workspace/_failed_tasks_<model>.json`，包含所有低分任务的完整信息。
+**多模型根目录模式**：
+```bash
+python3 <skill_dir>/scripts/generate_failed_tasks_manifest.py \
+  --result-root <评测结果根目录> \
+  --model <模型目录名> \
+  --threshold 60
+
+# 示例
+python3 .claude/skills/low-score-analysis/scripts/generate_failed_tasks_manifest.py \
+  --result-root astronclaw-result/all-suite/round-3 \
+  --model xsparkx2flash-530 \
+  --threshold 60
+```
+
+脚本输出：
+- **单模型模式**：`<模型目录>/report-workspace/_failed_tasks_<model>.json`
+- **多模型模式**：`<结果根>/report-workspace/_failed_tasks_<model>.json`
+
+**⚠️ 重要提示**：脚本会显示**实际模型名**（从评测结果 JSON 中读取）和**工作区目录位置**。后续生成的分析文件必须使用模型名命名，并保存到显示的工作区目录。
 
 ### 第 2 步：数据精简与安全检查（必须）
 
@@ -135,23 +179,97 @@ print(f"✅ 最终结果: {final_file}")
 
 ### 第 5 步（可选）：回填 Excel 报告
 
-`scripts/generate_eval_report.py` 支持 `--analysis` 参数，把结果回填到对应模型用例详情 Sheet 的「结果分析」「根因分析」两列：
+`scripts/generate_eval_report.py` 支持 `--analysis` 参数，把结果回填到对应模型用例详情 Sheet 的「结果分析」「根因分析」两列。
 
-```bash
-python3 skill/scripts/generate_eval_report.py \
-  -d <result-root>/<model1> <result-root>/<model2> ... \
-  --analysis <report-workspace>/analysis_input.json \
-  --output <输出xlsx>
+**⚠️ 关键要求：分析文件名必须包含模型名**
+
+报告脚本通过**文件名匹配模型名**来识别分析结果。如果文件名不匹配，回填会失败并显示警告：
+
+```
+警告：分析文件为 task_id 字典格式，但无法从文件名 xxx 匹配到已加载模型
+已加载分析回填合计 0 条  ← 回填失败
 ```
 
-其中 `analysis_input.json` 需包含所有模型的分析结果，格式为：
+**命名规范**：
+
+✅ **正确**：`analysis_<实际模型名>.json`
+```bash
+# 示例：模型名是 xsparkx2flash
+analysis_xsparkx2flash.json          ← 能匹配
+analysis_xsparkx2flash_v2.json       ← 能匹配（模型名作为子串）
+```
+
+❌ **错误**：使用目录名而非模型名
+```bash
+# 示例：目录名是 debug-001，但模型名是 xsparkx2flash
+analysis_debug-001.json              ← 无法匹配，回填失败
+```
+
+**如何查看实际模型名**：
+
+在第 1 步运行 `generate_failed_tasks_manifest.py` 时，脚本会输出：
+```
+模型目录: debug-001
+实际模型名: xsparkx2flash ⚠️  (与目录名不同)
+...
+💡 提示：如需回填 Excel 报告，请确保分析文件名包含模型名 'xsparkx2flash'
+   建议命名: analysis_xsparkx2flash.json
+```
+
+**修复方法**（如果已生成错误命名的文件）：
+
+方法 1 - **重命名文件**（推荐）：
+```bash
+cd <workspace>
+mv analysis_<目录名>.json analysis_<模型名>.json
+mv analysis_<目录名>_batch_*.json analysis_<模型名>_batch_*.json
+```
+
+方法 2 - **使用显式模型绑定**：
+```bash
+python3 scripts/generate_eval_report.py \
+  -d <result-dir> \
+  --analysis MODEL=<模型名>:<workspace>/analysis_<目录名>.json
+```
+
+**回填示例**：
+
+```bash
+# 单模型回填
+python3 scripts/generate_eval_report.py \
+  -d results-astronclaw-local/debug-001 \
+  --analysis results-astronclaw-local/report-workspace/analysis_xsparkx2flash.json
+
+# 多模型回填
+python3 scripts/generate_eval_report.py \
+  -d <result-root>/<model1> <result-root>/<model2> \
+  --analysis <workspace>/analysis_<model1>.json \
+  --analysis <workspace>/analysis_<model2>.json \
+  --output report_multi_models.xlsx
+```
+
+**验证回填成功**：
+
+脚本输出应显示：
+```
+已加载分析回填合计 N 条（来自 1 个文件）  ← N > 0 表示成功
+```
+
+生成的 Excel 文件中，对应模型的"评分详情"Sheet 的「第1轮结果分析」「第1轮根因分析」列应包含分析内容。
+
+**高级格式**（多模型合并文件）：
+
+如需一个文件包含多个模型的分析，使用键值格式 `<model>::<task_id>`：
 ```json
 {
-  "<model1>::<task_id>": {
-    "ra": "<result_analysis>",
-    "rc": "<root_cause_analysis>"
+  "xsparkx2flash::task_calendar": {
+    "result_analysis": "...",
+    "root_cause_analysis": "..."
   },
-  ...
+  "glm51::task_calendar": {
+    "result_analysis": "...",
+    "root_cause_analysis": "..."
+  }
 }
 ```
 
