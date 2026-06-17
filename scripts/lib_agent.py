@@ -775,6 +775,7 @@ def _archive_transcript(
     output_dir: Optional[Path],
     task_id: str,
     session_index: int,
+    run_index: Optional[int] = None,
 ) -> None:
     """Archive the transcript for a session before starting a new one.
 
@@ -787,7 +788,10 @@ def _archive_transcript(
     if transcript_path and output_dir:
         import shutil as _shutil
         output_dir.mkdir(parents=True, exist_ok=True)
-        archive_dest = output_dir / f"{task_id}_session{session_index}.jsonl"
+        if run_index is not None:
+            archive_dest = output_dir / f"{task_id}_run{run_index + 1}_session{session_index}.jsonl"
+        else:
+            archive_dest = output_dir / f"{task_id}_session{session_index}.jsonl"
         try:
             _shutil.copy2(transcript_path, archive_dest)
             logger.info("Archived session %d transcript to %s", session_index, archive_dest)
@@ -808,6 +812,7 @@ def execute_openclaw_task(
     thinking_level: Optional[str] = None,
     use_local: bool = False,
     workspace_dir: Optional[Path] = None,
+    run_index: Optional[int] = None,
 ) -> Dict[str, Any]:
     logger.info("🤖 Agent [%s] starting task: %s", agent_id, task.task_id)
     logger.info("   Task: %s", task.name)
@@ -876,6 +881,7 @@ def execute_openclaw_task(
                     output_dir=output_dir,
                     task_id=task.task_id,
                     session_index=i - 1,
+                    run_index=run_index,
                 )
                 # Clean up old session state so the agent starts with a blank slate
                 cleanup_agent_sessions(agent_id)
@@ -976,7 +982,10 @@ def execute_openclaw_task(
         merged_transcript: List[Dict[str, Any]] = []
         if output_dir:
             for session_idx in range(len(sessions)):
-                archive_path = output_dir / f"{task.task_id}_session{session_idx}.jsonl"
+                if run_index is not None:
+                    archive_path = output_dir / f"{task.task_id}_run{run_index + 1}_session{session_idx}.jsonl"
+                else:
+                    archive_path = output_dir / f"{task.task_id}_session{session_idx}.jsonl"
                 if archive_path.exists():
                     try:
                         for line in archive_path.read_text(encoding="utf-8").splitlines():
@@ -1004,7 +1013,11 @@ def execute_openclaw_task(
     if transcript_path and output_dir:
         import shutil as _shutil
         output_dir.mkdir(parents=True, exist_ok=True)
-        archive_dest = output_dir / f"{task.task_id}.jsonl"
+        # Include run_index in filename if provided (for multi-run tasks)
+        if run_index is not None:
+            archive_dest = output_dir / f"{task.task_id}_run{run_index + 1}.jsonl"
+        else:
+            archive_dest = output_dir / f"{task.task_id}.jsonl"
         try:
             _shutil.copy2(transcript_path, archive_dest)
             logger.info("Archived transcript to %s", archive_dest)

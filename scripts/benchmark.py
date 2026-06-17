@@ -854,17 +854,26 @@ def main():
     def _build_task_entry(r: Dict[str, Any]) -> Dict[str, Any]:
         """Build a single task entry dict for results JSON."""
         tid = r["task_id"]
+        run_idx = r.get("run_index")
+        grading = grades_by_task_id.get(tid, {})
         entry: Dict[str, Any] = {
             "task_id": tid,
+            "run_index": run_idx,
             "status": r["status"],
             "timed_out": r["timed_out"],
             "execution_time": r["execution_time"],
             "transcript_length": len(r["transcript"]),
             "usage": r.get("usage", {}),
             "workspace": r["workspace"],
-            "grading": grades_by_task_id.get(tid, {}),
+            "grading": grading,
             "frontmatter": tasks_by_id[tid].frontmatter,
         }
+        # Pair this entry with its own run's grade so per-run reports don't have
+        # to re-derive it from the aggregated grading.runs array.
+        if run_idx is not None:
+            runs = grading.get("runs") or []
+            if 0 <= run_idx < len(runs):
+                entry["run_grading"] = runs[run_idx]
         if category_map:
             entry["category"] = category_map.get(tid, "")
         return entry
@@ -1034,6 +1043,7 @@ def main():
                     thinking_level=args.thinking,
                     use_local=bool(args.base_url),
                     workspace_dir=agent_workspace,
+                    run_index=run_index if runs_per_task > 1 else None,
                 )
             except Exception as exc:
                 execution_error = str(exc)
@@ -1051,6 +1061,11 @@ def main():
                     "stdout": "",
                     "stderr": execution_error,
                 }
+
+            # Tag the result with its run index so downstream report tools can
+            # pair each task entry with the matching transcript file
+            # ({task}_run{N}.jsonl) and the matching per-run grade.
+            result["run_index"] = run_index
 
             task_results.append(result)
             results.append(result)

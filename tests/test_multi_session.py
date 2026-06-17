@@ -171,10 +171,39 @@ class TestArchiveTranscript(unittest.TestCase):
                 output_dir=output_dir,
                 task_id="task_test",
                 session_index=0,
+                run_index=None,
             )
 
             archive_path = output_dir / "task_test_session0.jsonl"
             self.assertTrue(archive_path.exists())
+
+    @patch("lib_agent._load_transcript")
+    def test_archive_with_run_index(self, mock_load: MagicMock) -> None:
+        """run_index 给定时归档文件名应带 _run{N} 前缀以避免跨轮覆盖。"""
+        transcript_data = [
+            {"type": "message", "message": {"role": "assistant", "content": "hi"}}
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            transcript_file = Path(tmpdir) / "original.jsonl"
+            transcript_file.write_text(json.dumps(transcript_data[0]) + "\n")
+            mock_load.return_value = (transcript_data, transcript_file)
+
+            output_dir = Path(tmpdir) / "output"
+            # run_index=2 -> 第3轮
+            _archive_transcript(
+                agent_id="test-agent",
+                current_session_id="session_1",
+                start_time=0.0,
+                output_dir=output_dir,
+                task_id="task_test",
+                session_index=0,
+                run_index=2,
+            )
+
+            archive_path = output_dir / "task_test_run3_session0.jsonl"
+            self.assertTrue(archive_path.exists())
+            # 旧命名不应存在
+            self.assertFalse((output_dir / "task_test_session0.jsonl").exists())
 
     @patch("lib_agent._load_transcript")
     def test_archive_no_transcript_path(self, mock_load: MagicMock) -> None:
@@ -190,6 +219,7 @@ class TestArchiveTranscript(unittest.TestCase):
                 output_dir=output_dir,
                 task_id="task_test",
                 session_index=0,
+                run_index=None,
             )
 
 
