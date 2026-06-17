@@ -50,10 +50,20 @@ def _backfill_difficulty(models: List[ModelResult], tasks_root: Path) -> None:
                 t.difficulty = d
 
 
-def resolve_transcript_path(model_dir: Path, task_id: str) -> Optional[Path]:
-    """在模型目录的 *_transcripts/ 下找 <task_id>.jsonl。"""
+def resolve_transcript_path(model_dir: Path, task_id: str, run_index: Optional[int] = None) -> Optional[Path]:
+    """在模型目录的 *_transcripts/ 下找 transcript。
+
+    run_index 给定时优先找多轮命名 {task_id}_run{N}.jsonl（N = run_index + 1），
+    找不到回退到旧命名 {task_id}.jsonl。run_index 为 None 时只找旧命名。
+    """
     for d in model_dir.iterdir():
         if d.is_dir() and d.name.endswith("_transcripts"):
+            # 多轮命名优先
+            if run_index is not None:
+                cand = d / f"{task_id}_run{run_index + 1}.jsonl"
+                if cand.exists():
+                    return cand
+            # 旧单轮命名回退
             cand = d / f"{task_id}.jsonl"
             if cand.exists():
                 return cand

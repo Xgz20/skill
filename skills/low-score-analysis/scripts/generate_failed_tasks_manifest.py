@@ -95,12 +95,25 @@ def extract_failed_tasks(result_json: Path, threshold: float, tasks_dir: Path = 
             if task_md.exists():
                 task_file = str(task_md)
 
-        # transcript 路径
-        transcript_path = ""
+        # transcript 路径（多轮场景枚举所有 run，单轮回退旧命名）
+        transcript_paths = []
+        transcript_total_kb = 0.0
         if transcripts_dir:
-            transcript_jsonl = transcripts_dir / f"{tid}.jsonl"
-            if transcript_jsonl.exists():
-                transcript_path = str(transcript_jsonl)
+            # 先尝试多轮命名 {tid}_run{N}.jsonl
+            runs_per_task = len(runs)
+            found_multi = False
+            for i in range(runs_per_task):
+                transcript_jsonl = transcripts_dir / f"{tid}_run{i + 1}.jsonl"
+                if transcript_jsonl.exists():
+                    transcript_paths.append(str(transcript_jsonl))
+                    transcript_total_kb += transcript_jsonl.stat().st_size / 1024
+                    found_multi = True
+            # 回退旧单轮命名
+            if not found_multi:
+                transcript_jsonl = transcripts_dir / f"{tid}.jsonl"
+                if transcript_jsonl.exists():
+                    transcript_paths.append(str(transcript_jsonl))
+                    transcript_total_kb += transcript_jsonl.stat().st_size / 1024
 
         # 计算平均分
         avg_score = grading.get("mean", min_score)
@@ -123,9 +136,10 @@ def extract_failed_tasks(result_json: Path, threshold: float, tasks_dir: Path = 
             "grading_detail": {
                 "grading_runs": all_runs_detail,  # 嵌套结构：与 simplify_task / workflow_template.js 对齐
             },
-            "transcript": transcript_path,
-            "transcript_kb": round(Path(transcript_path).stat().st_size / 1024, 1)
-                              if transcript_path and Path(transcript_path).exists() else 0,
+            # 兼容字段：多轮时 transcript=首轮，transcripts=全部轮次列表
+            "transcript": transcript_paths[0] if transcript_paths else "",
+            "transcripts": transcript_paths,  # 按 run1..runN 顺序，单轮场景为单元素
+            "transcript_kb": round(transcript_total_kb, 1),
             "category": task.get("category", ""),
         })
 

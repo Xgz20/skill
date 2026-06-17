@@ -77,6 +77,27 @@ def test_resolve_transcript_path(tmp_path):
     assert resolve_transcript_path(d, "task_missing") is None
 
 
+def test_resolve_transcript_path_multi_run(tmp_path):
+    # 多轮命名 {task}_run{N}.jsonl 优先，缺失时回退旧命名
+    d = tmp_path / "spark"
+    td = d / "0001_transcripts"
+    td.mkdir(parents=True)
+    (td / "task_a_run1.jsonl").write_text('{"type":"session"}\n')
+    (td / "task_a_run2.jsonl").write_text('{"type":"session"}\n')
+    (td / "task_b.jsonl").write_text('{"type":"session"}\n')  # 旧命名
+    # run_index 命中多轮文件
+    p1 = resolve_transcript_path(d, "task_a", run_index=0)
+    assert p1 is not None and p1.name == "task_a_run1.jsonl"
+    p2 = resolve_transcript_path(d, "task_a", run_index=1)
+    assert p2 is not None and p2.name == "task_a_run2.jsonl"
+    # 多轮文件不存在该轮时回退旧命名（task_b 只有旧命名）
+    pb = resolve_transcript_path(d, "task_b", run_index=0)
+    assert pb is not None and pb.name == "task_b.jsonl"
+    # 不传 run_index 仍走旧命名
+    pb2 = resolve_transcript_path(d, "task_b")
+    assert pb2 is not None and pb2.name == "task_b.jsonl"
+
+
 def test_build_collected_data_single_model(tmp_path):
     _make_model_dir(tmp_path, "spark", "xsparkx2flash",
                     [_task("task_low", "research", 0.5), _task("task_ok", "coding", 0.9)])

@@ -64,7 +64,8 @@ def collect_model_results(round_dir: Path) -> List[Dict]:
         # 提取任务结果（取第一个任务）
         task_data = data.get("tasks", [{}])[0]
 
-        # 查找 transcript 文件
+        # 查找 transcript 文件（多轮场景取第一个匹配，可能是任意 run）
+        # 用于 case-optimizer 的聚合分析，不依赖特定轮次
         transcript_dirs = list(model_dir.glob("*_transcripts"))
         transcript_path = None
         if transcript_dirs:

@@ -353,14 +353,27 @@ def fmt_pct(v: float | None) -> str:
 # --------------------------------------------------------------------------- #
 # transcript 读取
 # --------------------------------------------------------------------------- #
-def read_transcript_raw(result_path: Path, run_id: str, task_id: str) -> str:
-    """读取 {run_id}_transcripts/{task_id}.jsonl 全文（不截断）。
+def read_transcript_raw(
+    result_path: Path, run_id: str, task_id: str, run_index: int | None = None
+) -> str:
+    """读取 transcript jsonl 全文（不截断）。
+
+    run_index 给定时优先读多轮命名 {run_id}_transcripts/{task_id}_run{N}.jsonl
+    （N = run_index + 1），找不到回退到旧命名 {task_id}.jsonl。
+    run_index 为 None 时只找旧命名（单轮场景）。
 
     找不到返回空串。供摘要解析使用——必须用未截断文本，
     否则超长首行会被切断导致 JSONL 解析失败。
     """
     base = result_path.parent
-    candidates = []
+    candidates: list[Path] = []
+    # 多轮命名优先
+    if run_index is not None:
+        fname = f"{task_id}_run{run_index + 1}.jsonl"
+        if run_id:
+            candidates.append(base / f"{run_id}_transcripts" / fname)
+        candidates += list(base.glob(f"*_transcripts/{fname}"))
+    # 旧单轮命名回退
     if run_id:
         candidates.append(base / f"{run_id}_transcripts" / f"{task_id}.jsonl")
     candidates += list(base.glob(f"*_transcripts/{task_id}.jsonl"))
@@ -373,9 +386,11 @@ def read_transcript_raw(result_path: Path, run_id: str, task_id: str) -> str:
     return ""
 
 
-def read_transcript(result_path: Path, run_id: str, task_id: str) -> str:
+def read_transcript(
+    result_path: Path, run_id: str, task_id: str, run_index: int | None = None
+) -> str:
     """读取 transcript 全文，超长截断（供 Excel「实际结果」列）。"""
-    text = read_transcript_raw(result_path, run_id, task_id)
+    text = read_transcript_raw(result_path, run_id, task_id, run_index)
     if not text:
         return "无 transcript 记录"
     if len(text) > CELL_MAX_LEN:
@@ -856,19 +871,32 @@ def write_diff_matrix_sheet(wb, models):
 def write_score_detail_sheet(wb, model, metas, task_order, analysis=None):
     """写入单个模型的评分详情。
 
-    analysis: {"model::task_id": {"result_analysis": str, "root_cause": str}}
-              用于回填「结果分析」「根因分析」两列；为 None 或缺项时留空。
+    analysis: 按轮分析 {"model::task_id::run{N}": {"result_analysis": str, "root_cause": str}}
+              或整体分析 {"model::task_id": {...}}；为 None 或缺项时留空。
     """
     analysis = analysis or {}
     # Sheet 名长度上限 31；模型名过长时截断
     name = f"评分详情_{model.model}"
     ws = wb.create_sheet(name[:31])
 
-    headers = [
-        "场景大类", "场景分组(S1~S8)", "子场景", "用例ID", "用例名称", "难度等级",
-        "输入(Prompt)", "预期行为", "评分标准", "实际结果", "得分",
-        "检查点得分明细", "失分点", "结果分析", "根因分析",
+    # 从 data 获取 runs_per_task 决定动态列数
+    runs_per_task = model.data.get("runs_per_task", 1)
+
+    # 构建动态表头：每轮一对「第N轮结果」「第N轮得分」
+    base_headers = [
+        "场景大类", "场景分组(S1~S8)", "子场景", "分类", "用例ID", "用例名称", "难度等级",
+        "输入(Prompt)", "预期行为", "评分标准",
     ]
+    run_headers = []
+    for i in range(1, runs_per_task + 1):
+        run_headers.extend([f"第{i}轮结果", f"第{i}轮得分"])
+
+    tail_headers = ["平均得分", "检查点得分明细", "失分点"]
+    # 按轮诊断列：每轮一对「第N轮结果分析」「第N轮根因分析」
+    for i in range(1, runs_per_task + 1):
+        tail_headers.extend([f"第{i}轮结果分析", f"第{i}轮根因分析"])
+
+    headers = base_headers + run_headers + tail_headers
     ws.append(headers)
     style_header_row(ws, 1, len(headers))
 
@@ -882,34 +910,80 @@ def write_score_detail_sheet(wb, model, metas, task_order, analysis=None):
             continue  # 该模型未跑此用例
 
         grading = task.get("grading", {}) or {}
-        cat_cell = bilingual(CATEGORY_ZH.get(meta.category_en, meta.category_en), meta.category_en)
+        runs = grading.get("runs") or []
+        scene_cell = bilingual(SCENE_ZH.get(meta.scene_en, meta.scene_en), meta.scene_en)
         group = SCENE_GROUP.get(meta.scene_en, "")
-        transcript = read_transcript(model.path, model.run_id, tid)
+        cat_cell = bilingual(CATEGORY_ZH.get(meta.category_en, meta.category_en), meta.category_en)
+
+        # 基础列：场景大类, 场景分组, 子场景, 分类, 用例ID, 用例名称, 难度等级, Prompt, 预期, 评分标准
+        row = [
+            scene_cell, group, meta.sub_scene_zh, cat_cell, tid, meta.name_zh, meta.difficulty,
+            meta.prompt, meta.expected, meta.criteria,
+        ]
+
+        # 动态每轮列：transcript + 该轮得分
+        for i in range(runs_per_task):
+            transcript = read_transcript(model.path, model.run_id, tid, run_index=i)
+            score = runs[i].get("score", 0.0) if i < len(runs) else 0.0
+            row.extend([transcript, round(float(score), 3)])
+
+        # 聚合列
         breakdown = format_breakdown(grading)
         lost_points = format_lost_points(grading)
+        mean_score = round(float(grading.get("mean", 0.0)), 3)
+        row.extend([mean_score, breakdown, lost_points])
 
-        ana = analysis.get(f"{model.model}::{tid}", {})
-        result_analysis = ana.get("result_analysis") or None
-        root_cause = ana.get("root_cause") or None
+        # 按轮诊断列
+        for i in range(runs_per_task):
+            key_run = f"{model.model}::{tid}::run{i + 1}"
+            key_agg = f"{model.model}::{tid}"  # 向后兼容：老分析 JSON 无 run 后缀
+            ana = analysis.get(key_run) or analysis.get(key_agg) or {}
+            row.extend([ana.get("result_analysis") or None, ana.get("root_cause") or None])
 
-        row = [
-            cat_cell, group, meta.sub_scene_zh, tid, meta.name_zh, meta.difficulty,
-            meta.prompt, meta.expected, meta.criteria, transcript,
-            round(float(grading.get("mean", 0.0)), 3), breakdown,
-            lost_points, result_analysis, root_cause,
-        ]
         ws.append(row)
         r = ws.max_row
-        for col in [7, 8, 9, 10, 12, 13, 14, 15]:  # 长文本列换行
+
+        # 设置长文本列换行（基础列 + 动态列 + 尾列）
+        wrap_cols = [8, 9, 10]  # Prompt, 预期, 评分标准
+        # 每轮结果列（第N轮结果）
+        for i in range(runs_per_task):
+            wrap_cols.append(11 + i * 2)  # 第N轮结果在 11, 13, 15...
+        # 聚合与诊断列
+        base_tail_col = 11 + runs_per_task * 2
+        wrap_cols.extend([base_tail_col + 1, base_tail_col + 2])  # 检查点明细, 失分点
+        # 每轮诊断列
+        for i in range(runs_per_task):
+            offset = base_tail_col + 3 + i * 2
+            wrap_cols.extend([offset, offset + 1])  # 第N轮结果分析, 第N轮根因分析
+
+        for col in wrap_cols:
             ws.cell(row=r, column=col).alignment = WRAP_TOP
 
+    # 列宽设置
     widths = {
-        1: 22, 2: 16, 3: 22, 4: 30, 5: 22, 6: 10,
-        7: 45, 8: 45, 9: 40, 10: 60, 11: 8, 12: 40, 13: 45, 14: 45, 15: 40,
+        1: 28, 2: 16, 3: 22, 4: 22, 5: 30, 6: 22, 7: 10,
+        8: 45, 9: 45, 10: 40,  # Prompt, 预期, 评分标准
     }
+    # 动态每轮列宽
+    for i in range(runs_per_task):
+        col_result = 11 + i * 2
+        col_score = col_result + 1
+        widths[col_result] = 60  # 第N轮结果
+        widths[col_score] = 8    # 第N轮得分
+
+    base_tail_col = 11 + runs_per_task * 2
+    widths[base_tail_col] = 8      # 平均得分
+    widths[base_tail_col + 1] = 40  # 检查点得分明细
+    widths[base_tail_col + 2] = 45  # 失分点
+    # 诊断列
+    for i in range(runs_per_task):
+        offset = base_tail_col + 3 + i * 2
+        widths[offset] = 45      # 第N轮结果分析
+        widths[offset + 1] = 40  # 第N轮根因分析
+
     for col, w in widths.items():
         ws.column_dimensions[get_column_letter(col)].width = w
-    ws.freeze_panes = "E2"
+    ws.freeze_panes = "F2"
 
 
 def fmt_timestamp(ts) -> str:
@@ -940,39 +1014,67 @@ def build_report(models, metas, project_root, analysis=None) -> openpyxl.Workboo
 
 
 def build_analysis_input(models, metas, task_order) -> list[dict]:
-    """构造「待 LLM 分析清单」：仅失分用例（mean < 1.0）。"""
+    """构造「待 LLM 分析清单」：按轮分别诊断，仅失分轮次（score < 1.0）。
+
+    返回的 key 格式："{model}::{task_id}::run{N}"，对应 write_score_detail_sheet
+    回填时的 analysis key。满分轮跳过不分析。
+    """
     items = []
     for m in models:
         task_by_id = {t["task_id"]: t for t in m.tasks if t.get("task_id")}
+        runs_per_task = m.data.get("runs_per_task", 1)
         for tid in task_order:
             task = task_by_id.get(tid)
             if task is None:
                 continue
             grading = task.get("grading", {}) or {}
-            mean = float(grading.get("mean", 0.0))
-            if mean >= 1.0:
-                continue  # 满分用例不需分析
+            runs = grading.get("runs") or []
             meta = metas.get(tid) or TaskMeta()
-            transcript_raw = read_transcript_raw(m.path, m.run_id, tid)
-            items.append({
-                "key": f"{m.model}::{tid}",
-                "model": m.model,
-                "task_id": tid,
-                "task_name_zh": meta.name_zh,
-                "category_zh": bilingual(
-                    CATEGORY_ZH.get(meta.category_en, meta.category_en), meta.category_en
-                ),
-                "difficulty": meta.difficulty,
-                "prompt_zh": meta.prompt,
-                "expected_zh": meta.expected,
-                "criteria_zh": meta.criteria,
-                "score": round(mean, 3),
-                "lost_points": format_lost_points(grading),
-                "transcript_excerpt": summarize_transcript(transcript_raw),
-                "result_analysis": "",
-                "root_cause": "",
-            })
+
+            # 按轮迭代，失分轮次单独成条目
+            for i, run_grade in enumerate(runs[:runs_per_task]):
+                score = float(run_grade.get("score", 0.0))
+                if score >= 1.0:
+                    continue  # 满分轮跳过
+                transcript_raw = read_transcript_raw(m.path, m.run_id, tid, run_index=i)
+                # 单轮失分点（从该轮 breakdown 提取）
+                single_run_lost = _format_single_run_lost_points(run_grade, i + 1)
+                items.append({
+                    "key": f"{m.model}::{tid}::run{i + 1}",
+                    "model": m.model,
+                    "task_id": tid,
+                    "run_index": i + 1,
+                    "task_name_zh": meta.name_zh,
+                    "category_zh": bilingual(
+                        CATEGORY_ZH.get(meta.category_en, meta.category_en), meta.category_en
+                    ),
+                    "difficulty": meta.difficulty,
+                    "prompt_zh": meta.prompt,
+                    "expected_zh": meta.expected,
+                    "criteria_zh": meta.criteria,
+                    "score": round(score, 3),
+                    "lost_points": single_run_lost,
+                    "transcript_excerpt": summarize_transcript(transcript_raw),
+                    "result_analysis": "",
+                    "root_cause": "",
+                })
     return items
+
+
+def _format_single_run_lost_points(run_grade: dict, run_num: int) -> str:
+    """提取单轮失分点（用于按轮诊断清单）。"""
+    breakdown = run_grade.get("breakdown") or {}
+    score = run_grade.get("score", 0.0)
+    zero = [k for k, v in breakdown.items() if v == 0]
+    partial = [(k, v) for k, v in breakdown.items() if 0 < v < 1.0]
+    lines = [f"第{run_num}轮 (score={score}):"]
+    if zero:
+        lines.append("  完全失分: " + ", ".join(zero))
+    if partial:
+        lines.append("  部分失分: " + ", ".join(f"{k}={v}" for k, v in partial))
+    if not zero and not partial:
+        lines.append("  本轮无失分")
+    return "\n".join(lines)
 
 
 def _infer_model_from_filename(path: Path, model_ids: list[str]) -> str | None:
