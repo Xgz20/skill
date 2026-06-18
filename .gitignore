@@ -61,6 +61,7 @@ dmypy.json
 # Environment variables
 .env
 .env.local
+local
 
 # Project specific
 uv.lock
