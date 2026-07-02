@@ -74,7 +74,6 @@ models-config.yaml
 
 # Vultr deployment
 deploy/
-docs/
 output/
 .worktrees/
 .claude/
