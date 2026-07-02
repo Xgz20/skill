@@ -21,7 +21,10 @@ description: Use when the user wants to analyze why a model scored low on PinchB
   - **单模型模式**：直接指定模型目录，如 `/path/to/results/xsparkx2flash-530`
   - **多模型模式**：指定包含多个模型子目录的根目录，如 `/path/to/results`
 - **模型信息**（`--model`）：多模型模式时必须指定，单模型模式可省略
-- **低分阈值**（`--threshold`，百分制，默认 60）：`score` 低于此值（满分为 1.0）的任务列入分析
+- **低分阈值**（`--threshold`，百分制，默认 60）：三轮**平均分**低于此值的任务列入「低分主口径」
+- **高波动阈值**（`--variance-threshold`，百分制，默认 50）：平均分≥阈值、但三轮极差(max-min)≥此值的任务列入「高波动/稳定性专项」（如 [100,0,100] 这类单轮偶发塌陷）
+
+> **双通道选取**：脚本按「主口径（均分<60）+ 高波动专项（均分≥60 但极差≥50）」两个通道并集选取任务，每条记录用 `low_score_type` 字段标注归属（`low` / `high_variance`），并附 `score_range_pct` 极差字段。分析（per-task，与筛选口径无关）对两桶通用；报告据此分章：主口径进正文，高波动进稳定性专项。
 
 脚本会**自动检测目录模式**：
 - 如果 `--result-root` 本身包含评测结果 JSON → 单模型模式，workspace 在模型目录内

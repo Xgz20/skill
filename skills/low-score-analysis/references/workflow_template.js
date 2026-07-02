@@ -51,13 +51,22 @@ const SCHEMA = {
 
 // ========== 参数解析与验证 ==========
 
-const model = args.model || 'unknown-model'
-const project = args.project || ''
-const result_root = args.result_root || ''
-const tasks = args.tasks || []
-const taskFiles = args.task_files || []  // 路径模式：每个元素是单任务JSON文件的绝对路径
-const batchSize = args.batch_size || 10
-const completedIds = new Set(args.completed_task_ids || [])
+// 兼容性修复：动态 scriptPath 模式下 Workflow 会把 args 序列化成 JSON 字符串传入脚本
+// （实测 typeof args === 'string'），而非对象。这里统一归一化回对象，否则 A.tasks/A.task_files
+// 会是 undefined，导致"未提供任务"报错。同时兼容对象/未定义两种情况。
+let A = args
+if (typeof A === 'string') {
+  try { A = JSON.parse(A) } catch (e) { A = {} }
+}
+A = A || {}
+
+const model = A.model || 'unknown-model'
+const project = A.project || ''
+const result_root = A.result_root || ''
+const tasks = A.tasks || []
+const taskFiles = A.task_files || []  // 路径模式：每个元素是单任务JSON文件的绝对路径
+const batchSize = A.batch_size || 10
+const completedIds = new Set(A.completed_task_ids || [])
 
 // 参数验证
 if ((!tasks || tasks.length === 0) && (!taskFiles || taskFiles.length === 0)) {

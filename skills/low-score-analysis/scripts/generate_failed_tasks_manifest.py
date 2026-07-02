@@ -2,9 +2,10 @@
 """
 生成低分（失分）任务清单 JSON —— 低分任务根因分析 Skill 的中间过程解析脚本（PinchBench 版）。
 
-读取某模型的评测结果 JSON（如 0002_xsparkx2flash.json），筛出任意一轮 score 低于阈值的任务，
-为每个任务汇总其根因分析所需的全部输入路径（任务文件、grading 详情、transcript.jsonl），
-输出一份清单 JSON，供后续 workflow 并发分析使用。
+读取某模型的评测结果 JSON（如 0002_xsparkx2flash.json），按「主口径 + 高波动专项」双通道
+选取任务：主口径取三轮平均分 < 阈值的低分任务；高波动专项取平均分≥阈值但极差(max-min)≥波动阈值
+的不稳定任务。为每个任务汇总其根因分析所需的全部输入路径（任务文件、grading 详情、transcript.jsonl），
+并用 low_score_type 字段标注归属，输出一份清单 JSON，供后续 workflow 并发分析使用。
 
 用法:
   python3 generate_failed_tasks_manifest.py \
@@ -53,8 +54,16 @@ def find_result_json(model_dir: Path) -> Path:
     return json_files[0]
 
 
-def extract_failed_tasks(result_json: Path, threshold: float, tasks_dir: Path = None) -> List[Dict[str, Any]]:
-    """从评测结果 JSON 中提取低分任务"""
+def extract_failed_tasks(result_json: Path, threshold: float, tasks_dir: Path = None,
+                         variance_threshold: float = 0.50) -> List[Dict[str, Any]]:
+    """从评测结果 JSON 中提取需分析的任务。
+
+    采用「主口径 + 高波动专项」双通道选取：
+      - 主口径（low）：三轮平均分 < threshold，即真正拉低模型得分的低分任务；
+      - 高波动专项（high_variance）：平均分 ≥ threshold 但极差(max-min) ≥ variance_threshold，
+        即"某轮偶发塌陷、整体尚可"的稳定性缺陷（如 [100,0,100]）。
+    两通道并集送入分析；每个任务用 low_score_type 字段标注归属，供报告分章。
+    """
     with open(result_json, encoding="utf-8") as f:
         data = json.load(f)
 
@@ -81,10 +90,22 @@ def extract_failed_tasks(result_json: Path, threshold: float, tasks_dir: Path = 
         if not runs:
             continue
 
-        # 检查是否有任意一轮低于阈值
-        min_score = min(run.get("score", 1.0) for run in runs)
-        if min_score >= threshold:
+        # 计算均分 / 极差
+        scores = [run.get("score", 1.0) for run in runs]
+        min_score = min(scores)
+        max_score = max(scores)
+        avg_score = grading.get("mean")
+        if avg_score is None:
+            avg_score = sum(scores) / len(scores)
+        score_range = max_score - min_score
+
+        # 双通道选取：主口径(均分<阈值) 或 高波动专项(均分≥阈值但极差≥波动阈值)
+        is_low = avg_score < threshold
+        # 减 1e-9 避免浮点误差把恰好等于阈值的极差（如 0.95-0.45）判为略小于阈值而漏选
+        is_high_var = (not is_low) and (score_range >= variance_threshold - 1e-9)
+        if not (is_low or is_high_var):
             continue
+        low_score_type = "low" if is_low else "high_variance"
 
         seen_tasks.add(tid)
 
@@ -115,9 +136,6 @@ def extract_failed_tasks(result_json: Path, threshold: float, tasks_dir: Path = 
                     transcript_paths.append(str(transcript_jsonl))
                     transcript_total_kb += transcript_jsonl.stat().st_size / 1024
 
-        # 计算平均分
-        avg_score = grading.get("mean", min_score)
-
         # 收集所有轮次的 grading 详情（用于分析多轮不稳定性）
         all_runs_detail = []
         for i, run in enumerate(runs, 1):
@@ -130,8 +148,11 @@ def extract_failed_tasks(result_json: Path, threshold: float, tasks_dir: Path = 
 
         bundles.append({
             "task_id": tid,
-            "score_pct": round(avg_score * 100, 1),
+            "low_score_type": low_score_type,  # "low"=均分<阈值主口径 / "high_variance"=高波动专项
+            "score_pct": round(avg_score * 100, 1),  # 三轮平均分（主口径依据）
             "min_score_pct": round(min_score * 100, 1),
+            "max_score_pct": round(max_score * 100, 1),
+            "score_range_pct": round(score_range * 100, 1),  # 极差 max-min，衡量稳定性
             "task_file": task_file,
             "grading_detail": {
                 "grading_runs": all_runs_detail,  # 嵌套结构：与 simplify_task / workflow_template.js 对齐
@@ -167,7 +188,9 @@ def main():
     parser.add_argument("--model", default=None,
                         help="模型目录名（可选）。多模型根目录模式时必须指定；单模型目录模式时可省略")
     parser.add_argument("--threshold", type=float, default=60,
-                        help="低分阈值（百分制），任意一轮 score 低于此值的任务列入清单，默认 60")
+                        help="低分阈值（百分制），三轮平均分低于此值的任务列入「低分主口径」，默认 60")
+    parser.add_argument("--variance-threshold", type=float, default=50,
+                        help="高波动阈值（百分制），均分≥阈值但极差(max-min)≥此值的任务列入「高波动专项」，默认 50")
     parser.add_argument("--workspace-dir", default=None,
                         help="输出工作区目录（可选）。未指定时，多模型模式默认 <result-root>/report-workspace，单模型模式默认 <model-dir>/report-workspace")
     parser.add_argument("--output", default=None,
@@ -222,9 +245,11 @@ def main():
 
     tasks_dir = find_tasks_dir(args.tasks_dir)
     threshold = args.threshold / 100.0
+    variance_threshold = args.variance_threshold / 100.0
 
-    bundles = extract_failed_tasks(result_json, threshold, tasks_dir)
-    bundles.sort(key=lambda b: b["min_score_pct"])
+    bundles = extract_failed_tasks(result_json, threshold, tasks_dir, variance_threshold)
+    # 主口径任务在前、高波动专项在后；组内按均分升序
+    bundles.sort(key=lambda b: (0 if b["low_score_type"] == "low" else 1, b["score_pct"]))
 
     # 计算统计信息
     with open(result_json, encoding="utf-8") as f:
@@ -241,12 +266,18 @@ def main():
     if args.model and model_name != args.model:
         print(f"  ⚠️  注意：--model 参数 '{args.model}' 与实际模型名不同")
     print(f"工作区目录: {workspace}")
-    print(f"低分任务数（任意轮<{args.threshold}%）: {len(bundles)} / {total_tasks}")
+    n_low = sum(1 for b in bundles if b["low_score_type"] == "low")
+    n_var = sum(1 for b in bundles if b["low_score_type"] == "high_variance")
+    print(f"低分任务数（均分<{args.threshold}%，主口径）: {n_low} / {total_tasks}")
+    print(f"高波动任务数（均分≥{args.threshold}% 但极差≥{args.variance_threshold}%，稳定性专项）: {n_var}")
+    print(f"合计送分析: {len(bundles)}")
     print(f"任务文件目录: {tasks_dir or '(未定位，task_file 留空)'}")
     print(f"清单已写入: {out}")
-    print(f"\n按类别统计：")
+    print(f"\n按类别统计（主口径低分任务）：")
     categories = {}
     for b in bundles:
+        if b["low_score_type"] != "low":
+            continue
         cat = b["category"] or "未分类"
         categories[cat] = categories.get(cat, 0) + 1
     for cat, count in sorted(categories.items(), key=lambda x: -x[1]):

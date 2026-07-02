@@ -31,6 +31,53 @@ def load_failed_tasks(workspace_dir: str, model: str) -> List[Dict]:
         return json.load(f)
 
 
+def split_tasks_by_bucket(failed_tasks: List[Dict], threshold: float = 60.0,
+                          variance_threshold: float = 50.0) -> Dict[str, List[Dict]]:
+    """把清单任务分成「主口径低分」与「高波动专项」两桶。
+
+    优先读清单里的 low_score_type 字段（由新版 generate_failed_tasks_manifest.py 写入）；
+    若缺失（旧清单），则回退用 score_pct / score_range_pct 现算，保证向后兼容。
+
+    返回: {'low': [...], 'high_variance': [...]}，组内按均分升序。
+    """
+    low, high_var = [], []
+    for t in failed_tasks:
+        ltype = t.get('low_score_type')
+        if ltype is None:
+            avg = t.get('score_pct', 0) or 0
+            rng = t.get('score_range_pct')
+            if rng is None:
+                mn = t.get('min_score_pct', avg)
+                mx = t.get('max_score_pct', avg)
+                rng = (mx or 0) - (mn or 0)
+            ltype = 'low' if avg < threshold else (
+                'high_variance' if rng >= variance_threshold else 'other')
+        if ltype == 'low':
+            low.append(t)
+        elif ltype == 'high_variance':
+            high_var.append(t)
+    low.sort(key=lambda b: b.get('score_pct', 0))
+    high_var.sort(key=lambda b: b.get('score_pct', 0))
+    return {'low': low, 'high_variance': high_var}
+
+
+def format_variance_table(high_var_tasks: List[Dict], analysis_data: Dict) -> str:
+    """生成「高波动/稳定性专项」任务详表 Markdown（含极差与各轮得分形态）。"""
+    lines = ['', '**高波动任务详表**（均分达标但存在单轮塌陷）：', '',
+             '| 任务 ID | 均分 | 极差 | 各轮得分 | 类别 |',
+             '|---------|------|------|---------|------|']
+    for t in high_var_tasks:
+        tid = t['task_id']
+        avg = t.get('score_pct', 0)
+        rng = t.get('score_range_pct', 0)
+        runs = t.get('grading_detail', {}).get('grading_runs', [])
+        seq = '/'.join(str(round(r.get('score', 0) * 100)) for r in runs)
+        cat = t.get('category', '')
+        lines.append(f'| {tid} | {avg:.0f}% | {rng:.0f}pt | {seq} | {cat} |')
+    lines.append('')
+    return '\n'.join(lines)
+
+
 def load_summary(result_dir: str) -> Optional[Dict]:
     """
     从评测结果目录加载 summary.json
