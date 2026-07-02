@@ -826,6 +826,7 @@ def write_scene_sheet(wb, models, metas, task_order):
 
 
 def write_difficulty_sheet(wb, models, metas, task_order):
+    """难度等级对比：模型为行、难度等级为列（与分类/场景对比方向相反）。"""
     dim: dict[str, list[str]] = {}
     for tid in task_order:
         meta = metas.get(tid)
@@ -833,10 +834,37 @@ def write_difficulty_sheet(wb, models, metas, task_order):
             dim.setdefault(meta.difficulty, []).append(tid)
     keys = [d for d in DIFFICULTY_ORDER if d in dim]
     keys += sorted(d for d in dim if d not in keys)
-    write_dimension_compare_sheet(
-        wb, "难度等级对比", "难度等级", models, keys, dim,
-        lambda d: bilingual(DIFFICULTY_ZH.get(d, d), d),
-    )
+
+    ws = wb.create_sheet("难度等级对比")
+
+    # 表头行：第一列为模型，其余各列为难度等级，格式 Ln(用例数)，如 L1(10)
+    headers = ["模型 \\ 难度等级"] + [f"{d}({len(dim[d])})" for d in keys]
+    ws.append(headers)
+    style_header_row(ws, 1, len(headers))
+
+    # 预算每个难度下 {模型: 平均分}，供逐行写分与最佳模型/分差使用
+    scores_by_key = {d: {m.model: avg_pct(m, dim[d]) for m in models} for d in keys}
+
+    # 每个模型一行，列为其在各难度上的平均分
+    for m in models:
+        row = [f"{m.model} 平均分"]
+        row += [fmt_pct(scores_by_key[d][m.model]) for d in keys]
+        ws.append(row)
+
+    # 汇总行：各难度的最佳模型、最高-最低分差
+    best_row = ["最佳模型"]
+    spread_row = ["最高-最低分差"]
+    for d in keys:
+        best, spread = best_model_and_spread(scores_by_key[d])
+        best_row.append(best)
+        spread_row.append(spread)
+    ws.append(best_row)
+    ws.append(spread_row)
+
+    ws.column_dimensions["A"].width = 28
+    for col in range(2, len(headers) + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 18
+    ws.freeze_panes = "B2"
 
 
 # --------------------------------------------------------------------------- #
